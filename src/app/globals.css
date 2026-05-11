@@ -2,26 +2,212 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card-bg: #ffffff;
+  --card-border: #e2e8f0;
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #f1f5f9;
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --hover-bg: #f1f5f9;
+  --modal-overlay: rgba(15, 23, 42, 0.4);
+  --shadow-color: rgba(0, 0, 0, 0.06);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.dark {
+  --background: #0f172a;
+  --foreground: #f1f5f9;
+  --card-bg: #1e293b;
+  --card-border: #334155;
+  --sidebar-bg: #1e293b;
+  --sidebar-border: #334155;
+  --input-bg: #1e293b;
+  --input-border: #475569;
+  --hover-bg: #334155;
+  --modal-overlay: rgba(0, 0, 0, 0.6);
+  --shadow-color: rgba(0, 0, 0, 0.3);
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--background);
   color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+/* Focus styles for accessibility */
+*:focus-visible {
+  outline: 2px solid #22a9a9;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Utility classes */
+@layer components {
+  .card {
+    @apply bg-[var(--card-bg)] border border-[var(--card-border)] rounded-2xl shadow-card;
+  }
+
+  .card-hover {
+    @apply card transition-all duration-200 hover:shadow-elevated hover:-translate-y-0.5;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center px-5 py-2.5 bg-primary-600 text-white font-medium rounded-xl
+    hover:bg-primary-700 active:bg-primary-800 transition-all duration-200
+    min-h-touch min-w-touch focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center px-5 py-2.5 bg-[var(--card-bg)] border border-[var(--card-border)]
+    text-foreground font-medium rounded-xl hover:bg-[var(--hover-bg)] active:bg-surface-200
+    transition-all duration-200 min-h-touch min-w-touch;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center px-4 py-2 text-surface-600 dark:text-surface-400
+    font-medium rounded-xl hover:bg-[var(--hover-bg)] transition-all duration-200 min-h-touch;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center px-5 py-2.5 bg-emergency-600 text-white font-medium rounded-xl
+    hover:bg-emergency-700 active:bg-emergency-800 transition-all duration-200 min-h-touch;
+  }
+
+  .btn-caution {
+    @apply inline-flex items-center justify-center px-5 py-2.5 bg-caution-500 text-white font-medium rounded-xl
+    hover:bg-caution-600 active:bg-caution-700 transition-all duration-200 min-h-touch;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-xl
+    text-foreground placeholder:text-surface-400 transition-colors duration-200
+    focus:border-primary-400 focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-900
+    min-h-touch;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1.5;
+  }
+
+  .chip-routine {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
+    bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300 border border-primary-200 dark:border-primary-800;
+  }
+
+  .chip-soon {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
+    bg-caution-50 text-caution-700 dark:bg-caution-950 dark:text-caution-300 border border-caution-200 dark:border-caution-800;
+  }
+
+  .chip-urgent {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
+    bg-urgent-50 text-urgent-700 dark:bg-urgent-950 dark:text-urgent-300 border border-urgent-200 dark:border-urgent-800;
+  }
+
+  .chip-emergency {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
+    bg-emergency-50 text-emergency-700 dark:bg-emergency-950 dark:text-emergency-300 border border-emergency-200 dark:border-emergency-800
+    animate-pulse-soft;
+  }
+
+  .section-title {
+    @apply text-lg font-semibold text-foreground;
+  }
+
+  .section-subtitle {
+    @apply text-sm text-surface-500 dark:text-surface-400;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-surface-600 dark:text-surface-400
+    hover:bg-[var(--hover-bg)] hover:text-foreground transition-all duration-200 min-h-touch font-medium;
+  }
+
+  .sidebar-link-active {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl bg-primary-50 dark:bg-primary-950
+    text-primary-700 dark:text-primary-300 font-semibold min-h-touch;
+  }
+
+  .citation-badge {
+    @apply inline-flex items-center px-1.5 py-0.5 text-2xs font-bold rounded-md
+    bg-accent-100 text-accent-700 dark:bg-accent-950 dark:text-accent-300
+    cursor-pointer hover:bg-accent-200 dark:hover:bg-accent-900 transition-colors;
+  }
+
+  .evidence-card {
+    @apply p-4 rounded-xl border border-[var(--card-border)] bg-surface-50 dark:bg-surface-800
+    text-sm leading-relaxed;
+  }
+
+  .emergency-overlay {
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-emergency-900/95 backdrop-blur-sm;
+  }
+}
+
+/* Animations */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--card-bg) 25%, var(--hover-bg) 50%, var(--card-bg) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white;
+    color: black;
+  }
+  .card {
+    border: 1px solid #ccc;
+    box-shadow: none;
   }
 }
