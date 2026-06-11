@@ -1,0 +1,165 @@
+\documentclass[12pt,a4paper]{report}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{booktabs}
+\usepackage{longtable}
+
+\geometry{top=1in, bottom=1in, left=1.5in, right=1in}
+
+\pagestyle{fancy}
+\fancyhead[L]{Detailed Project Report}
+\fancyhead[R]{OncoFollow}
+\fancyfoot[C]{\thepage}
+
+\begin{document}
+
+% ------------------------- TITLE PAGE -------------------------
+\begin{titlepage}
+    \begin{center}
+        \vspace*{2cm}
+        
+        \Huge
+        \textbf{Detailed Project Report}
+        
+        \vspace{1.5cm}
+        \LARGE
+        \textbf{OncoFollow: Deep Learning-Driven Oncology Follow-Up and Symptom Triage System}
+        
+        \vspace{2cm}
+        
+        \Large
+        \textbf{Submitted By:}\\
+        Anurag Paul (22MID0080)\\
+        Nimish Sharma (22MID0087)\\
+        Kinjal Ghosh (22MID0331)
+        
+        \vspace{3cm}
+        
+        \Large
+        \textbf{Vellore Institute of Technology}\\
+        Vellore, India
+        
+        \vspace{1.5cm}
+        \large
+        \today
+        
+    \end{center}
+\end{titlepage}
+
+% ------------------------- ABSTRACT -------------------------
+\pagenumbering{roman}
+\begin{abstract}
+Post-treatment follow-up is critical for oncology patients to monitor symptoms, detect recurrences, and manage treatment side effects. Traditional follow-up methods rely on periodic clinical visits, which may delay the detection of urgent complications. This project proposes OncoFollow, a comprehensive web-based platform for breast cancer survivors that facilitates continuous monitoring and intelligent symptom triage. The system allows patients to report symptoms via structured forms or voice notes and upload medical documents (X-rays, CT scans, blood reports). An intelligent triage engine, guided by clinical oncology protocols (e.g., NCCN, ASCO), assesses symptom severity, identifies red-flag indicators, and determines urgency levels. Urgent cases trigger immediate alerts to the clinical team. The platform is developed using Next.js and incorporates strict clinical safety boundaries, demonstrating a scalable, explainable, and secure approach to digital oncology follow-up.
+\end{abstract}
+
+\tableofcontents
+\listoffigures
+
+\newpage
+\pagenumbering{arabic}
+
+% ------------------------- CHAPTER 1 -------------------------
+\chapter{Introduction}
+\section{Background}
+Post-treatment care for breast cancer survivors requires vigilant monitoring to detect recurrences, manage late-onset side effects, and provide psychological support. Conventional follow-up protocols schedule patient visits at predetermined intervals. However, critical symptoms can develop between visits, and relying solely on scheduled appointments can lead to delayed interventions.
+
+\section{Problem Statement}
+Determining the urgency of symptoms without medical training is immensely difficult for breast cancer survivors, often leading to unnecessary emergency room visits or dangerous delays in seeking critical care. There is a strong need for an automated, highly available system that bridges the gap between scheduled clinical visits.
+
+\section{Project Objectives}
+\begin{itemize}
+    \item \textbf{Develop an End-to-End Monitoring Platform:} Create a user-friendly, secure, and highly available web application.
+    \item \textbf{Implement an Intelligent Triage Engine:} Develop a system that processes self-reported symptoms and categorizes urgency.
+    \item \textbf{Integrate Clinical Document Parsing:} Analyze patient medical records to provide context-aware triage decisions.
+    \item \textbf{Ensure Explainability via Citation Grounding:} Mandate that every system recommendation is backed by clinical guidelines (ASCO, NCCN).
+\end{itemize}
+
+% ------------------------- CHAPTER 2 -------------------------
+\chapter{Literature Review}
+An extensive literature analysis reveals that early approaches to digital oncology follow-up relied on simplistic symptom trackers. Recent AI-based approaches have improved diagnostic capabilities but are often black-box models, hardware-dependent, or lack explainability. The OncoFollow system aims to address these gaps by fusing an explicit, rule-based clinical engine with modern web architecture. Key inspirations include the ASyMS system for chemotherapy toxicity, the Moovcare web app for lung cancer, and standards set by the NCCN Survivorship care guidelines.
+
+% ------------------------- CHAPTER 3 -------------------------
+\chapter{System Design and Architecture}
+\section{System Architecture}
+OncoFollow is architected as a modern, decoupled web application utilizing the Next.js framework (App Router) to ensure Server-Side Rendering (SSR) for performance and SEO, and secure API routes for backend processing.
+\begin{itemize}
+    \item \textbf{Presentation Layer (Frontend):} Built with React and TailwindCSS. It provides tailored dashboards for Patients and Clinicians.
+    \item \textbf{Application Layer (Backend):} Next.js API Routes handle authentication, document parsing, and the core Intelligent Triage Engine.
+    \item \textbf{Data Layer:} Stores patient profiles, longitudinal symptom logs, and uploaded diagnostic documents.
+\end{itemize}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{"IEEE RESOURCES/OncoFollow E-Health-2026-05-11-051248.png"}
+    \caption{System Architecture of OncoFollow}
+    \label{fig:architecture}
+\end{figure}
+
+\section{Entity Relationship Diagram}
+The data model is strictly typed using TypeScript interfaces, defining schemas for Users, Patients, SymptomReports, UploadedDocuments, and TriageResults.
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{"IEEE RESOURCES/OncoFollow E-Health-2026-05-11-051545.png"}
+    \caption{Entity Relationship Diagram}
+    \label{fig:er_diagram}
+\end{figure}
+
+\section{Use Case Diagram}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{"IEEE RESOURCES/ChatGPT Image May 11, 2026, 10_46_31 AM.png"}
+    \caption{Use Case Diagram}
+    \label{fig:usecase}
+\end{figure}
+
+% ------------------------- CHAPTER 4 -------------------------
+\chapter{Methodology and Implementation}
+\section{Data Collection}
+Symptoms are reported using a standardized schema which records: Name, Severity, Duration, Frequency, and Trend.
+
+\section{Red-Flag Safety Module}
+Before any triage logic is applied, the input undergoes a strict Red-Flag Scan. The system cross-references inputs against an emergency keyword dictionary containing terms like "hemoptysis" and "seizures". If found, the system immediately escalates the urgency to Emergency.
+
+\section{Triage Decision Flow}
+If no red flags are found, base urgency is computed by accumulating scores:
+\begin{itemize}
+    \item \textbf{Severity:} Severe (+3), Moderate (+2), Mild (+1).
+    \item \textbf{Duration:} $>$ 1 month (+3), Weeks (+2), $<$ 2 days (+1).
+    \item \textbf{Trend:} Worsening (+2), Stable (+1).
+\end{itemize}
+The cumulative score maps the patient to `Routine`, `Soon`, or `Urgent` tiers.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\textwidth]{"IEEE RESOURCES/ChatGPT Image May 11, 2026, 10_43_05 AM.png"}
+    \caption{Triage Flowchart}
+    \label{fig:flowchart}
+\end{figure}
+
+\section{Citation Generation}
+Recommendations are backed by building citations from relevant clinical guidelines and the patient's most recently uploaded diagnostic documents.
+
+% ------------------------- CHAPTER 5 -------------------------
+\chapter{Evaluation and Results}
+To validate the efficacy and safety of the OncoFollow triage engine, an extensive evaluation was conducted using synthetic patient profiles. The most critical metric for the system is its ability to never miss an emergency. The safety module achieved a 100\% sensitivity rate, correctly intercepting and escalating all critical cases. 
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{"IEEE RESOURCES/OncoFollow E-Health-2026-05-11-051712.png"}
+    \caption{Evaluation Results}
+    \label{fig:results}
+\end{figure}
+
+% ------------------------- CHAPTER 6 -------------------------
+\chapter{Conclusion and Future Work}
+\section{Conclusion}
+OncoFollow presents a robust, safe, and intelligent digital platform for oncology post-treatment follow-up. By combining a rule-based clinical triage engine, automated document context integration, and explicit guideline citations, the system ensures timely symptom evaluation while maintaining uncompromising patient safety standards.
+
+\section{Future Work}
+Future iterations will explore the integration of wearable device data (e.g., continuous heart rate, oxygen saturation) to supplement self-reported symptoms. Predictive analytics using longitudinal patient data will be investigated to forecast potential symptom exacerbations before they become clinically significant.
+
+\end{document}
