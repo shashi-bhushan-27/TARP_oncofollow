@@ -5,11 +5,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Heart, LayoutDashboard, Activity, Brain, Clock,
   Bell, Settings, LogOut, Sun, Moon, Menu, X, User,
-  Stethoscope, Upload
+  Stethoscope, Upload, FlaskConical
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
 import { demoAlerts } from '@/data/demoData';
+import { inpatients } from '@/data/labData';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -24,11 +25,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const unreadAlerts = demoAlerts.filter(a => !a.isRead).length;
+  const criticalPatients = inpatients.filter(p => p.alertLevel === 'critical').length;
 
   const patientLinks = [
     { href: '/dashboard/patient', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/symptoms', label: 'Report Symptoms', icon: Activity },
     { href: '/upload', label: 'Upload Reports', icon: Upload },
+    { href: '/labs', label: 'Lab Trends', icon: FlaskConical },
     { href: '/assistant', label: 'AI Assistant', icon: Brain },
     { href: '/timeline', label: 'Care Timeline', icon: Clock },
     { href: '/alerts', label: 'Alerts', icon: Bell, badge: unreadAlerts },
@@ -36,6 +39,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const clinicianLinks = [
     { href: '/dashboard/clinician', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/labs', label: 'Lab Trends', icon: FlaskConical, badge: criticalPatients },
     { href: '/alerts', label: 'Alerts Queue', icon: Bell, badge: unreadAlerts },
     { href: '/assistant', label: 'AI Assistant', icon: Brain },
     { href: '/timeline', label: 'Patient Timelines', icon: Clock },
@@ -120,9 +124,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <aside className="hidden lg:flex fixed left-0 top-0 bottom-0 w-64 border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] p-4 flex-col z-30">
         <div className="flex items-center gap-2.5 mb-8">
           <div className="w-9 h-9 rounded-xl bg-primary-600 flex items-center justify-center">
-            <Heart className="w-5 h-5 text-white" />
+            <FlaskConical className="w-5 h-5 text-white" />
           </div>
-          <span className="font-bold text-lg">OncoFollow</span>
+          <div>
+            <span className="font-bold text-base">LCIIS</span>
+            <p className="text-2xs text-surface-400 leading-none">Lab Intelligence System</p>
+          </div>
         </div>
         <SidebarContent
           links={links}
