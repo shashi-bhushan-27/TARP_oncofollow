@@ -5,12 +5,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { success: false, error: 'GROQ_API_KEY environment variable is not configured.' },
+        { status: 500 }
+      );
+    }
+
+    const groq = new Groq({ apiKey });
     const body = await req.json();
     const { messages, patientContext, mode } = body;
 
