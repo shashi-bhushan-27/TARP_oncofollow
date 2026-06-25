@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Heart, LayoutDashboard, Activity, Brain, Clock,
   Bell, Settings, LogOut, Sun, Moon, Menu, X, User,
-  Stethoscope, Upload, FlaskConical
+  Stethoscope, Upload, FlaskConical, BookOpen
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
@@ -35,6 +35,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { href: '/assistant', label: 'AI Assistant', icon: Brain },
     { href: '/timeline', label: 'Care Timeline', icon: Clock },
     { href: '/alerts', label: 'Alerts', icon: Bell, badge: unreadAlerts },
+    { href: '/docs', label: 'Documentation', icon: BookOpen },
   ];
 
   const clinicianLinks = [
@@ -43,12 +44,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { href: '/alerts', label: 'Alerts Queue', icon: Bell, badge: unreadAlerts },
     { href: '/assistant', label: 'AI Assistant', icon: Brain },
     { href: '/timeline', label: 'Patient Timelines', icon: Clock },
+    { href: '/docs', label: 'Documentation', icon: BookOpen },
   ];
 
   const adminLinks = [
     { href: '/dashboard/admin', label: 'Admin Panel', icon: Settings },
     { href: '/dashboard/clinician', label: 'Clinical View', icon: Stethoscope },
     { href: '/alerts', label: 'All Alerts', icon: Bell, badge: unreadAlerts },
+    { href: '/docs', label: 'Documentation', icon: BookOpen },
   ];
 
   const links = user.role === 'admin' ? adminLinks :

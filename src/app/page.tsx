@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {
   Heart, Shield, Mic, FileText, Brain, Bell,
   ChevronRight, Phone, Lock, Activity, Sun, Moon,
-  Stethoscope, Users
+  Stethoscope, Users, BookOpen
 } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 
@@ -32,6 +32,10 @@ export default function LandingPage() {
             <span className="text-lg font-bold text-foreground">OncoFollow</span>
           </div>
           <div className="flex items-center gap-3">
+            <Link href="/docs" className="btn-ghost text-sm gap-1.5 hidden sm:inline-flex">
+              <BookOpen className="w-4 h-4" />
+              Docs
+            </Link>
             <button
               onClick={toggle}
               className="btn-ghost w-10 h-10 !p-0 rounded-xl"
@@ -222,10 +226,15 @@ export default function LandingPage() {
               </div>
               <span className="font-semibold text-foreground">OncoFollow</span>
             </div>
-            <p className="text-xs text-surface-400 dark:text-surface-500 text-center">
+            <p className="text-xs text-surface-400 dark:text-surface-500 text-center max-w-md">
               ⚕️ This tool is for follow-up support and does not replace a doctor&apos;s diagnosis.
               Always consult your healthcare team for medical decisions.
             </p>
+            <div className="flex items-center gap-4">
+              <Link href="/docs" className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline inline-flex items-center gap-1">
+                <BookOpen className="w-3.5 h-3.5" /> Documentation
+              </Link>
+            </div>
           </div>
         </div>
       </footer>
