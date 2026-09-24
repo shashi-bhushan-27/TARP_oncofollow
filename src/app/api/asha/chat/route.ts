@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { demoUsers, getPatientForUser } from '@/data/demoData';
 import { scanForRedFlags, sanitizeOutput, checkAshaSpeech } from '@/lib/safety';
+import { isNonEnglishScript, reviewAshaReply } from '@/lib/asha/safetyCheck';
 import { groqChat } from '@/lib/groqChat';
 import { buildListenInstructions, buildTextReplyInstructions } from '@/lib/asha/prompt';
 import { AshaState, addNote, addOtherSymptom, mergeSymptom } from '@/lib/asha/slots';
@@ -52,6 +53,11 @@ export async function POST(req: NextRequest) {
       { role: 'user', content: `Previous companion message: ${previousAsha || '(none)'}\nLatest message: ${latest}` },
     ], { json: true, maxTokens: 700, temperature: 0, models: LISTEN_MODELS }));
 
+    // Emergency signs described in any language (the keyword scan above is English plus common phrases)
+    if (heard.emergency_sign === true) {
+      return NextResponse.json({ success: true, emergency: true, trigger: latest });
+    }
+
     let next = state;
     let newInfo = false;
     for (const s of Array.isArray(heard.symptoms) ? heard.symptoms : []) {
@@ -88,8 +94,13 @@ export async function POST(req: NextRequest) {
     }, plan.instruction, languageName);
 
     const raw = await groqChat([{ role: 'system', content: system }, ...messages.slice(-10)], { maxTokens: 600, temperature: 0.6 });
-    const reply = sanitizeOutput(raw.replace(/^["']|["']$/g, '').trim() || 'Sorry, I missed that. Could you tell me again?');
-    const speech = checkAshaSpeech(reply);
+    const said = raw.replace(/^["']|["']$/g, '').trim() || 'Sorry, I missed that. Could you tell me again?';
+    // Check the raw reply first — sanitising would hide the very phrases we look for.
+    // Replies in other languages also get the model-based review.
+    const speech = isNonEnglishScript(said) || !language.startsWith('en')
+      ? await reviewAshaReply(said)
+      : checkAshaSpeech(said);
+    const reply = sanitizeOutput(said);
 
     return NextResponse.json({
       success: true,
@@ -100,7 +111,9 @@ export async function POST(req: NextRequest) {
       state: next,
       flow: plan.flow,
       done: plan.done,
-      toneFlag: speech.tone ?? speech.critical ?? null,
+      reviewFlag: speech.critical
+        ? `Asha's reply was replaced (${speech.critical}): "${said.slice(0, 200)}"`
+        : speech.tone ? `Tone to review (${speech.tone}): "${said.slice(0, 200)}"` : null,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Asha could not reply';

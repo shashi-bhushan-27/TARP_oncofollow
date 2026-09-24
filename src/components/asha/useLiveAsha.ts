@@ -102,8 +102,34 @@ export function useLiveAsha(userId: string | undefined, roomTone: boolean, callb
     finishingRef.current = true;
     teardown();
     setStatus('ended');
-    callbacksRef.current.onEmergency(whatWasSaid, stateRef.current, linesRef.current);
+    callbacksRef.current.onEmergency(whatWasSaid, stateRef.current, linesRef.current, flagsRef.current);
   }, [teardown]);
+
+  /**
+   * Language-independent checks on each completed turn (runs alongside the keyword
+   * checks above): an emergency described in any language, or clinical advice from Asha.
+   */
+  const checkTurn = useCallback((personText: string, ashaText: string) => {
+    const post = (kind: 'person' | 'asha', text: string) => fetch('/api/asha/safety', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind, text }),
+    }).then(r => r.json()).catch(() => ({}));
+
+    if (personText.trim()) {
+      post('person', personText).then(r => { if (r?.emergency) escalate(personText); });
+    }
+    if (ashaText.trim()) {
+      post('asha', ashaText).then(r => {
+        if (r?.critical) {
+          flagsRef.current.push(`Asha said something outside her limits (${r.critical}): "${ashaText.slice(0, 200)}" — conversation stopped for care-team review`);
+          complete();
+        } else if (r?.tone && !flagsRef.current.some(f => f.includes(ashaText.slice(0, 40)))) {
+          flagsRef.current.push(`Tone to review (${r.tone}): "${ashaText.slice(0, 200)}"`);
+        }
+      });
+    }
+  }, [escalate, complete]);
 
   const handleMessage = useCallback((m: LiveServerMessage) => {
     const player = playerRef.current;
@@ -148,8 +174,11 @@ export function useLiveAsha(userId: string | undefined, roomTone: boolean, callb
     }
 
     if (content?.turnComplete) {
+      const personText = personTurnRef.current;
+      const ashaText = ashaTurnRef.current;
       personTurnRef.current = '';
       ashaTurnRef.current = '';
+      checkTurn(personText, ashaText);
       commitLines(linesRef.current.map(l => ({ ...l, final: true })));
       if (finishingRef.current) return;
       setStatus(player?.isPlaying ? 'speaking' : 'listening');
@@ -190,7 +219,7 @@ export function useLiveAsha(userId: string | undefined, roomTone: boolean, callb
         functionResponses: [{ id: call.id, name: call.name, response }],
       });
     }
-  }, [complete, escalate, appendText, commitLines, commitState]);
+  }, [complete, escalate, appendText, commitLines, commitState, checkTurn]);
 
   const connect = useCallback(async (attempt: number): Promise<void> => {
     const res = await fetch('/api/asha/token', {
@@ -260,6 +289,18 @@ export function useLiveAsha(userId: string | undefined, roomTone: boolean, callb
     }
   }, [userId, roomTone, connect, teardown, commitLines, commitState]);
 
+  /** Stop without finishing — used when switching modes. Nothing is submitted. */
+  const cancel = useCallback(() => {
+    finishingRef.current = true;
+    teardown();
+    personTurnRef.current = '';
+    ashaTurnRef.current = '';
+    commitLines([]);
+    commitState(emptyAshaState());
+    setError(null);
+    setStatus('idle');
+  }, [teardown, commitLines, commitState]);
+
   const toggleMute = useCallback(() => {
     setMuted(m => {
       micRef.current?.setMuted(!m);
@@ -288,6 +329,7 @@ export function useLiveAsha(userId: string | undefined, roomTone: boolean, callb
     error,
     start,
     finish: complete,
+    cancel,
     toggleMute,
   };
 }

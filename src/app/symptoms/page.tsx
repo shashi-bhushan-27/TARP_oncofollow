@@ -162,6 +162,7 @@ export default function SymptomsPage() {
     free: freeText,
     associated: associatedSymptoms,
     spoken: transcript,
+    reviewFlags: [] as string[],
   }) => {
     if (!patient) return;
 
@@ -197,14 +198,15 @@ export default function SymptomsPage() {
       recentDocuments: [],
     });
 
-    setTriageResult(result);
+    // Asha review flags go with the check-in to the care team (never shown to the patient)
+    setTriageResult(input.reviewFlags.length ? { ...result, reviewFlags: input.reviewFlags } : result);
     setStep(4); // Show results
   };
 
   const handleSubmit = () => submitCheckIn();
 
   // Asha's findings go through exactly the same submit and routing as the form
-  const submitFromAsha = (state: AshaState, lines: AshaLine[], extraText = '') => {
+  const submitFromAsha = (state: AshaState, lines: AshaLine[], extraText = '', reviewFlags: string[] = []) => {
     const form = toCheckInForm(state);
     setSelectedSymptoms(form.selected);
     setSymptomDetails(form.details);
@@ -214,13 +216,14 @@ export default function SymptomsPage() {
       free: [form.notes, extraText].filter(Boolean).join(' '),
       associated: form.associated,
       spoken: lines.filter(l => l.who === 'person').map(l => l.text).join(' '),
+      reviewFlags,
     });
   };
 
   const ashaCallbacks = {
     onFinished: (state: AshaState, lines: AshaLine[], flags: string[]) => setAshaResult({ state, lines, flags }),
-    onEmergency: (said: string, state: AshaState, lines: AshaLine[]) => {
-      submitFromAsha(state, lines, said);
+    onEmergency: (said: string, state: AshaState, lines: AshaLine[], flags: string[]) => {
+      submitFromAsha(state, lines, said, flags);
       setShowEmergency(true);
     },
   };
@@ -304,7 +307,7 @@ export default function SymptomsPage() {
             state={ashaResult.state}
             lines={ashaResult.lines}
             onChange={state => setAshaResult({ ...ashaResult, state })}
-            onConfirm={() => submitFromAsha(ashaResult.state, ashaResult.lines)}
+            onConfirm={() => submitFromAsha(ashaResult.state, ashaResult.lines, '', ashaResult.flags)}
             onTalkAgain={() => { setAshaResult(null); setAshaAttempt(n => n + 1); }}
             isCaregiver={isCaregiver}
             patientFirstName={patientFirstName}

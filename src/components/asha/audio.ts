@@ -65,16 +65,26 @@ export async function startMic(
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
   });
   const ctx = new AudioContext();
-  const url = URL.createObjectURL(new Blob([CAPTURE_WORKLET], { type: 'application/javascript' }));
-  await ctx.audioWorklet.addModule(url);
-  URL.revokeObjectURL(url);
-
-  const source = ctx.createMediaStreamSource(stream);
-  const node = new AudioWorkletNode(ctx, 'asha-capture');
-  const sink = ctx.createGain();
-  sink.gain.value = 0; // keep the node processing without playing the mic back
-  source.connect(node);
-  node.connect(sink).connect(ctx.destination);
+  let node: AudioWorkletNode;
+  try {
+    const url = URL.createObjectURL(new Blob([CAPTURE_WORKLET], { type: 'application/javascript' }));
+    try {
+      await ctx.audioWorklet.addModule(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    const source = ctx.createMediaStreamSource(stream);
+    node = new AudioWorkletNode(ctx, 'asha-capture');
+    const sink = ctx.createGain();
+    sink.gain.value = 0; // keep the node processing without playing the mic back
+    source.connect(node);
+    node.connect(sink).connect(ctx.destination);
+  } catch (err) {
+    // Setup failed after the mic was granted: release it before reporting the error
+    stream.getTracks().forEach(t => t.stop());
+    ctx.close().catch(() => undefined);
+    throw err;
+  }
 
   let muted = false;
   let pending: Float32Array[] = [];
