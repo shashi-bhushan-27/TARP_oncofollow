@@ -3,7 +3,7 @@
 // Red-flag detection, disclaimer injection, and safety rules
 // =============================================
 
-import { UrgencyLevel, SymptomEntry, SymptomName } from '@/types';
+import { RoutingPriority, SymptomEntry, SymptomName } from '@/types';
 
 // Hard-coded red flags — these ALWAYS trigger EMERGENCY
 const IMMEDIATE_EMERGENCY_KEYWORDS: string[] = [
@@ -31,7 +31,7 @@ const RED_FLAG_SYMPTOMS: SymptomName[] = [
   'hemoptysis', 'seizures', 'confusion',
 ];
 
-const SEVERE_COMBINATION_FLAGS: Array<{ symptoms: SymptomName[], level: UrgencyLevel }> = [
+const SEVERE_COMBINATION_FLAGS: Array<{ symptoms: SymptomName[], level: RoutingPriority }> = [
   { symptoms: ['headache', 'vision_changes'], level: 'emergency' },
   { symptoms: ['headache', 'confusion'], level: 'emergency' },
   { symptoms: ['weakness', 'numbness'], level: 'urgent' },
@@ -52,7 +52,39 @@ const BLOCKED_PHRASES: string[] = [
   'definitely benign',
   'I can confirm',
   'I can diagnose',
+  // False reassurance and forced positivity (see docs/asha-playbook.md)
+  'you will be fine',
+  'you\'ll be fine',
+  'it\'s probably nothing',
+  'it is probably nothing',
+  'everything happens for a reason',
+  'I know exactly how you feel',
 ];
+
+// Diagnostic or clinical claims: if Asha ever says one of these, the live session ends
+const ASHA_CRITICAL_PHRASES: string[] = [
+  'definitely not cancer', 'definitely benign', 'i can diagnose', 'you do not need a doctor',
+  'you don\'t need a doctor', 'no need to see a doctor', 'cancer has come back', 'cancer is back',
+  'it is not cancer', 'it\'s not cancer', 'you should stop taking', 'you should take', 'increase your dose',
+  'reduce your dose', 'you need a scan', 'you need a ct', 'you need an mri',
+];
+
+// Tone problems: flagged for care-team review but the conversation continues,
+// because some can appear innocently ("it's okay not to stay positive all the time")
+const ASHA_TONE_PHRASES: string[] = [
+  'nothing to worry about', 'you\'ll be fine', 'you will be fine', 'you are fine', 'you\'re fine',
+  'it\'s probably nothing', 'it is probably nothing', 'stay positive', 'everything happens for a reason',
+  'i know exactly how you feel', 'don\'t worry',
+];
+
+/** Check what Asha said (live transcript or text reply) against the playbook */
+export function checkAshaSpeech(text: string): { critical?: string; tone?: string } {
+  const lower = text.toLowerCase().replace(/[’‘]/g, '\'');
+  return {
+    critical: ASHA_CRITICAL_PHRASES.find(p => lower.includes(p)),
+    tone: ASHA_TONE_PHRASES.find(p => lower.includes(p)),
+  };
+}
 
 export const SAFETY_DISCLAIMER = 'This tool is for follow-up support and does not replace a doctor\'s diagnosis. Please consult your healthcare team for any medical concerns.';
 
@@ -74,14 +106,14 @@ export function scanForRedFlags(text: string): {
   for (const keyword of IMMEDIATE_EMERGENCY_KEYWORDS) {
     if (lowerText.includes(keyword)) {
       isEmergency = true;
-      triggers.push(keyword);
+      triggers.push(`Emergency keyword: "${keyword}"`);
     }
   }
 
   for (const keyword of URGENT_KEYWORDS) {
     if (lowerText.includes(keyword)) {
       isUrgent = true;
-      triggers.push(keyword);
+      triggers.push(`Escalation keyword: "${keyword}"`);
     }
   }
 
@@ -104,13 +136,13 @@ export function scanSymptomsForRedFlags(symptoms: SymptomEntry[]): {
   for (const symptom of symptoms) {
     if (RED_FLAG_SYMPTOMS.includes(symptom.name)) {
       isEmergency = true;
-      triggers.push(`Red flag symptom: ${symptom.label}`);
+      triggers.push(`Emergency-list symptom: ${symptom.label}`);
     }
 
     // Severe + worsening = escalate
     if (symptom.severity === 'severe' && symptom.trend === 'worsening') {
       isUrgent = true;
-      triggers.push(`Severe and worsening: ${symptom.label}`);
+      triggers.push(`Patient marked severe and getting worse: ${symptom.label}`);
     }
   }
 
@@ -124,7 +156,7 @@ export function scanSymptomsForRedFlags(symptoms: SymptomEntry[]): {
       } else {
         isUrgent = true;
       }
-      triggers.push(`Concerning combination: ${combo.symptoms.join(' + ')}`);
+      triggers.push(`Escalation rule matched: ${combo.symptoms.join(' + ')}`);
     }
   }
 
@@ -146,23 +178,23 @@ export function sanitizeOutput(text: string): string {
 /**
  * Ensure disclaimer is appended
  */
-export function ensureDisclaimer(text: string, urgency: UrgencyLevel): string {
+export function ensureDisclaimer(text: string, urgency: RoutingPriority): string {
   const disclaimer = urgency === 'emergency' ? EMERGENCY_DISCLAIMER : SAFETY_DISCLAIMER;
   if (!text.includes('does not replace')) {
-    return `${text}\n\n---\n⚕️ *${disclaimer}*`;
+    return `${text}\n\n---\n*${disclaimer}*`;
   }
   return text;
 }
 
 /**
- * Determine overall urgency from all signals
+ * Determine the final routing priority from all signals
  */
-export function resolveUrgency(
+export function resolveRoutingPriority(
   textFlags: { isEmergency: boolean; isUrgent: boolean },
   symptomFlags: { isEmergency: boolean; isUrgent: boolean },
-  baseUrgency: UrgencyLevel
-): UrgencyLevel {
+  baseRouting: RoutingPriority
+): RoutingPriority {
   if (textFlags.isEmergency || symptomFlags.isEmergency) return 'emergency';
   if (textFlags.isUrgent || symptomFlags.isUrgent) return 'urgent';
-  return baseUrgency;
+  return baseRouting;
 }

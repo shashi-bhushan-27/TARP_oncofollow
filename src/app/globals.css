@@ -2,34 +2,47 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
+/* =============================================
+   OncoFollow surface system
+   canvas  → page background
+   card    → primary content plane (tonal lift from canvas)
+   plane   → inset / secondary plane (sidebar, nested panels, secondary buttons)
+   Depth comes from these tonal steps, not from borders or shadows.
+   ============================================= */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #f6f5f1;
+  --foreground: #1d1c19;
+  --text-muted: #5c5851;
+  --text-subtle: #6f6a62;
   --card-bg: #ffffff;
-  --card-border: #e2e8f0;
-  --sidebar-bg: #ffffff;
-  --sidebar-border: #f1f5f9;
+  --card-border: #e7e4dd;
+  --plane: #eeece6;
+  --plane-strong: #e4e1d9;
+  --sidebar-bg: #eeece6;
+  --sidebar-border: transparent;
   --input-bg: #ffffff;
-  --input-border: #cbd5e1;
-  --hover-bg: #f1f5f9;
-  --modal-overlay: rgba(15, 23, 42, 0.4);
-  --shadow-color: rgba(0, 0, 0, 0.06);
+  --input-border: #cfcac0;
+  --hover-bg: #f1efea;
+  --modal-overlay: rgba(29, 28, 25, 0.45);
+  --focus: #1f6a5b;
 }
 
 .dark {
-  --background: #0f172a;
-  --foreground: #f1f5f9;
-  --card-bg: #1e293b;
-  --card-border: #334155;
-  --sidebar-bg: #1e293b;
-  --sidebar-border: #334155;
-  --input-bg: #1e293b;
-  --input-border: #475569;
-  --hover-bg: #334155;
+  --background: #141311;
+  --foreground: #ecebe6;
+  --text-muted: #bab5ab;
+  --text-subtle: #979188;
+  --card-bg: #1d1c19;
+  --card-border: #2e2c28;
+  --plane: #262420;
+  --plane-strong: #302e29;
+  --sidebar-bg: #191816;
+  --sidebar-border: transparent;
+  --input-bg: #1d1c19;
+  --input-border: #45423c;
+  --hover-bg: #24221f;
   --modal-overlay: rgba(0, 0, 0, 0.6);
-  --shadow-color: rgba(0, 0, 0, 0.3);
+  --focus: #80c2b2;
 }
 
 * {
@@ -39,165 +52,196 @@
 }
 
 html {
-  scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans), system-ui, -apple-system, 'Segoe UI', sans-serif;
   background-color: var(--background);
   color: var(--foreground);
-  line-height: 1.6;
+  font-size: 1rem;
+  line-height: 1.625;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
 }
 
-/* Focus styles for accessibility */
+/* Page titles use the display serif; weight is carried by size, not boldness.
+   Section headings stay in the UI sans unless they opt in with .font-display */
+h1 {
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
 *:focus-visible {
-  outline: 2px solid #22a9a9;
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
-  border-radius: 4px;
 }
 
-/* Scrollbar styling */
+::selection {
+  background: #d6ebe4;
+  color: #1d1c19;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
-
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
+  background: var(--plane-strong);
+  border-radius: 4px;
 }
 
-.dark ::-webkit-scrollbar-thumb {
-  background: #475569;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Utility classes */
 @layer components {
+  /* ---------- Surfaces ---------- */
   .card {
-    @apply bg-[var(--card-bg)] border border-[var(--card-border)] rounded-2xl shadow-card;
+    @apply bg-[var(--card-bg)] rounded-xl;
   }
 
   .card-hover {
-    @apply card transition-all duration-200 hover:shadow-elevated hover:-translate-y-0.5;
+    @apply card transition-colors duration-150 hover:bg-[var(--hover-bg)];
   }
 
-  .btn-primary {
-    @apply inline-flex items-center justify-center px-5 py-2.5 bg-primary-600 text-white font-medium rounded-xl
-    hover:bg-primary-700 active:bg-primary-800 transition-all duration-200
-    min-h-touch min-w-touch focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2;
-  }
-
-  .btn-secondary {
-    @apply inline-flex items-center justify-center px-5 py-2.5 bg-[var(--card-bg)] border border-[var(--card-border)]
-    text-foreground font-medium rounded-xl hover:bg-[var(--hover-bg)] active:bg-surface-200
-    transition-all duration-200 min-h-touch min-w-touch;
-  }
-
-  .btn-ghost {
-    @apply inline-flex items-center justify-center px-4 py-2 text-surface-600 dark:text-surface-400
-    font-medium rounded-xl hover:bg-[var(--hover-bg)] transition-all duration-200 min-h-touch;
-  }
-
-  .btn-danger {
-    @apply inline-flex items-center justify-center px-5 py-2.5 bg-emergency-600 text-white font-medium rounded-xl
-    hover:bg-emergency-700 active:bg-emergency-800 transition-all duration-200 min-h-touch;
-  }
-
-  .btn-caution {
-    @apply inline-flex items-center justify-center px-5 py-2.5 bg-caution-500 text-white font-medium rounded-xl
-    hover:bg-caution-600 active:bg-caution-700 transition-all duration-200 min-h-touch;
-  }
-
-  .input-field {
-    @apply w-full px-4 py-3 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-xl
-    text-foreground placeholder:text-surface-400 transition-colors duration-200
-    focus:border-primary-400 focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-900
-    min-h-touch;
-  }
-
-  .label {
-    @apply block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1.5;
-  }
-
-  .chip-routine {
-    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
-    bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300 border border-primary-200 dark:border-primary-800;
-  }
-
-  .chip-soon {
-    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
-    bg-caution-50 text-caution-700 dark:bg-caution-950 dark:text-caution-300 border border-caution-200 dark:border-caution-800;
-  }
-
-  .chip-urgent {
-    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
-    bg-urgent-50 text-urgent-700 dark:bg-urgent-950 dark:text-urgent-300 border border-urgent-200 dark:border-urgent-800;
-  }
-
-  .chip-emergency {
-    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
-    bg-emergency-50 text-emergency-700 dark:bg-emergency-950 dark:text-emergency-300 border border-emergency-200 dark:border-emergency-800
-    animate-pulse-soft;
-  }
-
-  .section-title {
-    @apply text-lg font-semibold text-foreground;
-  }
-
-  .section-subtitle {
-    @apply text-sm text-surface-500 dark:text-surface-400;
-  }
-
-  .sidebar-link {
-    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-surface-600 dark:text-surface-400
-    hover:bg-[var(--hover-bg)] hover:text-foreground transition-all duration-200 min-h-touch font-medium;
-  }
-
-  .sidebar-link-active {
-    @apply flex items-center gap-3 px-4 py-3 rounded-xl bg-primary-50 dark:bg-primary-950
-    text-primary-700 dark:text-primary-300 font-semibold min-h-touch;
-  }
-
-  .citation-badge {
-    @apply inline-flex items-center px-1.5 py-0.5 text-2xs font-bold rounded-md
-    bg-accent-100 text-accent-700 dark:bg-accent-950 dark:text-accent-300
-    cursor-pointer hover:bg-accent-200 dark:hover:bg-accent-900 transition-colors;
+  .panel {
+    @apply bg-plane rounded-xl;
   }
 
   .evidence-card {
-    @apply p-4 rounded-xl border border-[var(--card-border)] bg-surface-50 dark:bg-surface-800
-    text-sm leading-relaxed;
+    @apply p-4 rounded-lg bg-plane text-sm leading-relaxed;
+  }
+
+  .divider {
+    @apply border-t border-[var(--card-border)];
+  }
+
+  /* ---------- Type ---------- */
+  .page-title {
+    @apply font-display text-2xl sm:text-3xl text-foreground;
+  }
+
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.08em] text-subtle;
+  }
+
+  .section-title {
+    @apply text-base font-semibold text-foreground;
+  }
+
+  .section-subtitle {
+    @apply text-sm text-muted;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-foreground mb-1.5;
+  }
+
+  /* ---------- Controls ---------- */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 min-h-touch rounded-lg
+    bg-primary-600 text-white text-[0.9375rem] font-medium
+    hover:bg-primary-700 active:bg-primary-800 transition-colors duration-150
+    dark:bg-primary-300 dark:hover:bg-primary-200 dark:active:bg-primary-100 dark:text-surface-950;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 min-h-touch rounded-lg
+    bg-plane text-foreground text-[0.9375rem] font-medium
+    hover:bg-[var(--plane-strong)] transition-colors duration-150;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-3 min-h-touch rounded-lg
+    text-muted font-medium hover:bg-[var(--hover-bg)] hover:text-foreground transition-colors duration-150;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 px-4 min-h-touch rounded-lg
+    bg-emergency-600 text-white font-medium hover:bg-emergency-700 transition-colors duration-150;
+  }
+
+  .btn-caution {
+    @apply inline-flex items-center justify-center gap-2 px-4 min-h-touch rounded-lg
+    bg-caution-600 text-white font-medium hover:bg-caution-700 transition-colors duration-150;
+  }
+
+  .input-field {
+    @apply w-full px-3.5 py-2.5 min-h-touch rounded-lg bg-[var(--input-bg)] border border-[var(--input-border)]
+    text-foreground text-[0.9375rem] placeholder:text-subtle transition-colors duration-150
+    focus:outline-none focus:border-primary-600 focus:ring-2 focus:ring-primary-600/20
+    dark:focus:border-primary-300 dark:focus:ring-primary-300/20;
+  }
+
+  /* ---------- Status tags (routing) ----------
+     Square-cornered tags with a shape marker; colour is never the only signal. */
+  .chip-routine, .chip-soon, .chip-urgent, .chip-emergency {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap;
+  }
+  .chip-routine {
+    @apply bg-primary-50 text-primary-800 dark:bg-primary-950 dark:text-primary-200;
+  }
+  .chip-soon {
+    @apply bg-caution-50 text-caution-800 dark:bg-caution-950 dark:text-caution-200;
+  }
+  .chip-urgent {
+    @apply bg-urgent-50 text-urgent-800 dark:bg-urgent-950 dark:text-urgent-200;
+  }
+  .chip-emergency {
+    @apply bg-emergency-600 text-white dark:bg-emergency-500;
+  }
+
+  .citation-badge {
+    @apply inline-flex items-center px-1.5 py-0.5 text-2xs font-semibold rounded
+    bg-accent-50 text-accent-700 dark:bg-accent-950 dark:text-accent-200;
+  }
+
+  /* ---------- Navigation ---------- */
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2 rounded-lg text-[0.9375rem] text-muted
+    hover:text-foreground hover:bg-[var(--plane-strong)] transition-colors duration-150 min-h-touch font-medium;
+  }
+
+  .sidebar-link-active {
+    @apply flex items-center gap-3 px-3 py-2 rounded-lg text-[0.9375rem] min-h-touch font-semibold
+    bg-[var(--card-bg)] text-foreground;
+  }
+
+  .tab {
+    @apply relative px-1 pb-3 text-sm font-medium text-muted hover:text-foreground transition-colors duration-150;
+  }
+  .tab-active {
+    @apply relative px-1 pb-3 text-sm font-semibold text-foreground
+    after:absolute after:left-0 after:right-0 after:bottom-[-1px] after:h-0.5 after:bg-primary-600 dark:after:bg-primary-300;
   }
 
   .emergency-overlay {
-    @apply fixed inset-0 z-50 flex items-center justify-center bg-emergency-900/95 backdrop-blur-sm;
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-emergency-800;
   }
 }
 
-/* Animations */
+/* Skeleton loading */
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
 
 .skeleton {
-  background: linear-gradient(90deg, var(--card-bg) 25%, var(--hover-bg) 50%, var(--card-bg) 75%);
+  background: linear-gradient(90deg, var(--plane) 25%, var(--plane-strong) 50%, var(--plane) 75%);
   background-size: 200% 100%;
-  animation: shimmer 1.5s ease-in-out infinite;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
 }
 
-/* Print styles */
 @media print {
   .no-print {
     display: none !important;
@@ -205,9 +249,5 @@ body {
   body {
     background: white;
     color: black;
-  }
-  .card {
-    border: 1px solid #ccc;
-    box-shadow: none;
   }
 }

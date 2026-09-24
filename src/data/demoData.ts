@@ -3,7 +3,7 @@
 // =============================================
 import {
   User, Patient, SymptomReport, UploadedDocument, Alert, ClinicianNote,
-  TimelineEvent, GuidelineDocument, AIAssessment, AuditLog, UrgencyLevel
+  TimelineEvent, AuditLog, RoutingPriority, PatientNotification
 } from '@/types';
 
 // =============================================
@@ -54,9 +54,9 @@ export const demoPatients: Patient[] = [
       { id: 'm3', name: 'Multivitamin', dosage: '1 tablet', frequency: 'Once daily', startDate: '2025-03-01', isActive: true },
     ],
     followUpSchedule: [
-      { id: 'f1', dueDate: '2025-08-15', type: 'Clinical exam + blood work', status: 'completed', notes: 'All normal' },
-      { id: 'f2', dueDate: '2025-11-15', type: 'Clinical exam + mammogram', status: 'completed', notes: 'No recurrence detected' },
-      { id: 'f3', dueDate: '2026-02-15', type: 'Clinical exam + blood work', status: 'completed', notes: 'CBC normal, liver enzymes within limits' },
+      { id: 'f1', dueDate: '2025-08-15', type: 'Clinical exam + blood work', status: 'completed', notes: 'Attended' },
+      { id: 'f2', dueDate: '2025-11-15', type: 'Clinical exam + mammogram', status: 'completed', notes: 'Attended' },
+      { id: 'f3', dueDate: '2026-02-15', type: 'Clinical exam + blood work', status: 'completed', notes: 'Attended' },
       { id: 'f4', dueDate: '2026-04-15', type: 'Clinical exam + chest imaging', status: 'scheduled' },
     ],
   },
@@ -86,8 +86,8 @@ export const demoPatients: Patient[] = [
       { id: 'm4', name: 'Multivitamin', dosage: '1 tablet', frequency: 'Once daily', startDate: '2025-07-01', isActive: true },
     ],
     followUpSchedule: [
-      { id: 'f5', dueDate: '2025-11-20', type: 'Clinical exam', status: 'completed', notes: 'Routine. No concerns.' },
-      { id: 'f6', dueDate: '2026-02-20', type: 'Clinical exam + mammogram', status: 'completed', notes: 'All clear' },
+      { id: 'f5', dueDate: '2025-11-20', type: 'Clinical exam', status: 'completed', notes: 'Attended' },
+      { id: 'f6', dueDate: '2026-02-20', type: 'Clinical exam + mammogram', status: 'completed', notes: 'Attended' },
       { id: 'f7', dueDate: '2026-05-20', type: 'Clinical exam + blood work', status: 'scheduled' },
     ],
   },
@@ -171,6 +171,7 @@ export const demoPatients: Patient[] = [
     distanceFromCenter: 5,
     followUpFrequency: 'Every 6 months',
     consentGiven: true,
+    caregiverUserIds: ['u9'],
     treatmentHistory: [
       { id: 'th16', type: 'surgery', name: 'Mastectomy with Reconstruction', startDate: '2025-04-15', endDate: '2025-04-15', details: 'Implant-based reconstruction. Clear margins. All nodes negative.', hospital: 'Ruby Hall Clinic' },
       { id: 'th17', type: 'chemotherapy', name: 'TC Regimen', startDate: '2025-05-20', endDate: '2025-08-15', details: '4 cycles. Mild side effects.', hospital: 'Ruby Hall Clinic' },
@@ -180,7 +181,7 @@ export const demoPatients: Patient[] = [
       { id: 'm10', name: 'Anastrozole', dosage: '1mg', frequency: 'Once daily', startDate: '2025-09-01', isActive: true },
     ],
     followUpSchedule: [
-      { id: 'f10', dueDate: '2026-03-01', type: 'Clinical exam + mammogram', status: 'completed', notes: 'Satisfactory' },
+      { id: 'f10', dueDate: '2026-03-01', type: 'Clinical exam + mammogram', status: 'completed', notes: 'Attended' },
       { id: 'f11', dueDate: '2026-09-01', type: 'Clinical exam + blood work', status: 'scheduled' },
     ],
   },
@@ -202,24 +203,26 @@ export const demoSymptomReports: SymptomReport[] = [
     associatedSymptoms: 'Mild breathlessness on exertion, occasional night sweats',
     createdAt: '2026-03-28T10:30:00Z',
     triageResult: {
-      urgencyLevel: 'urgent',
-      explanation: 'A persistent worsening cough lasting 3 weeks with chest discomfort in a breast cancer survivor (Stage IIA, completed treatment 8 months ago) raises concern for possible pulmonary involvement. Your recent chest X-ray shows a small nodule that needs further evaluation. This combination of symptoms warrants prompt medical attention.',
+      routingPriority: 'urgent',
+      explanation: 'Your check-in (Cough, Chest Pain, Fatigue) has been routed to the on-call oncology coordinator by SMS for a same-day call back. Your recent oncology reports and symptom logs have been compiled and attached to this high-priority alert for your care team to review.',
       recommendedActions: [
-        'Schedule an urgent appointment with your oncologist within the next few days',
-        'Get a CT scan of the chest for detailed evaluation of the lung nodule',
-        'Complete blood work including tumor markers (CA 15-3, CEA)',
-        'Keep a daily log of your cough and any new symptoms',
+        'An SMS alert has gone to the on-call oncology coordinator',
+        'Keep your phone nearby — the care team will call you back today',
+        'If you feel much worse before they reach you, go to the nearest emergency department',
       ],
-      suggestedTests: ['CT Chest with contrast', 'Tumor markers (CA 15-3, CEA)', 'Complete blood count', 'Liver function tests'],
+      prepSteps: [
+        'A nurse has been notified to schedule your follow-up — keep your phone nearby',
+        'Please ensure your caregiver is available to drive or accompany you',
+        'Bring your previous scan CDs and printed reports',
+        'Bring your current medicine list and hospital ID card',
+      ],
       redFlagTriggers: [],
       confidenceBand: 'high',
       citations: [
-        { id: 'c1', label: '[R1]', sourceType: 'record', sourceId: 'doc1', sourceTitle: 'Chest X-ray PA View — Mar 2026', snippet: 'Small 1.2cm nodule noted in the right lower lobe. Recommend CT correlation.', date: '2026-03-25' },
-        { id: 'c2', label: '[R2]', sourceType: 'record', sourceId: 'th2', sourceTitle: 'Treatment Summary — AC-T Chemotherapy', snippet: 'Completed 4 cycles AC + 4 cycles Taxol. Stage IIA IDC, ER+/PR+/HER2-. 2/12 nodes positive.', date: '2025-02-28' },
-        { id: 'c3', label: '[G1]', sourceType: 'guideline', sourceId: 'g1', sourceTitle: 'NCCN Breast Cancer Survivorship v2.2025', snippet: 'New persistent respiratory symptoms in breast cancer survivors should prompt chest imaging to evaluate for pulmonary metastasis. CT chest is preferred over plain radiography for detailed evaluation.' },
-        { id: 'c4', label: '[G2]', sourceType: 'guideline', sourceId: 'g2', sourceTitle: 'ASCO Follow-up Recommendations', snippet: 'Patients with stage II-III breast cancer have a 10-15% risk of distant recurrence within the first 5 years. Lungs, bones, and liver are the most common metastatic sites.' },
+        { id: 'c1', label: '[R1]', sourceType: 'record', sourceId: 'doc1', sourceTitle: 'Chest X-ray PA View — Mar 2026', snippet: 'Attached for care-team review.', date: '2026-03-25' },
+        { id: 'c2', label: '[R2]', sourceType: 'record', sourceId: 'th2', sourceTitle: 'Treatment Summary — AC-T Chemotherapy', snippet: 'Attached for care-team review.', date: '2025-02-28' },
       ],
-      disclaimer: 'This tool is for follow-up support and does not replace a doctor\'s diagnosis. Please consult your oncology team for definitive evaluation.',
+      disclaimer: 'This tool is for follow-up support and does not replace a doctor\'s diagnosis. Please consult your healthcare team for any medical concerns.',
     },
   },
   {
@@ -232,19 +235,20 @@ export const demoSymptomReports: SymptomReport[] = [
     associatedSymptoms: 'None',
     createdAt: '2026-03-30T09:15:00Z',
     triageResult: {
-      urgencyLevel: 'routine',
-      explanation: 'Minor fatigue lasting one week with no other symptoms and no worsening trend in a stable post-treatment patient is likely related to general factors. No red flags identified. Continue routine monitoring.',
+      routingPriority: 'routine',
+      explanation: 'Your check-in (Fatigue) has been added to your care team\'s standard weekly review queue. Your next scheduled follow-up stays as planned, and you can send a new check-in at any time if anything changes.',
       recommendedActions: [
-        'Continue regular follow-up schedule',
-        'Maintain balanced diet and light exercise',
-        'If fatigue persists beyond 2-3 weeks or worsens, report again',
+        'Your check-in is in the care team\'s standard weekly review queue',
+        'Your next scheduled follow-up stays as planned',
+        'Send a new check-in at any time if anything changes',
       ],
-      suggestedTests: [],
+      prepSteps: [
+        'No extra preparation needed right now',
+        'Keep logging check-ins so your care team sees the full picture at your next visit',
+      ],
       redFlagTriggers: [],
       confidenceBand: 'high',
-      citations: [
-        { id: 'c5', label: '[G1]', sourceType: 'guideline', sourceId: 'g3', sourceTitle: 'Cancer-Related Fatigue Guidelines', snippet: 'Mild fatigue is common in cancer survivors and may be related to multiple factors including stress, sleep, and activity levels. Persistent or worsening fatigue warrants evaluation.' },
-      ],
+      citations: [],
       disclaimer: 'This tool is for follow-up support and does not replace a doctor\'s diagnosis.',
     },
   },
@@ -259,20 +263,23 @@ export const demoSymptomReports: SymptomReport[] = [
     associatedSymptoms: 'Difficulty sleeping due to pain',
     createdAt: '2026-03-29T14:00:00Z',
     triageResult: {
-      urgencyLevel: 'soon',
-      explanation: 'New and worsening bone pain in the lower back, alongside increasing fatigue in a Stage IIIA HER2+ breast cancer patient, should be evaluated to rule out bone metastasis. While bone pain can have many causes, your cancer history and treatment stage make clinical evaluation important.',
+      routingPriority: 'soon',
+      explanation: 'Your check-in (Bone Pain, Fatigue) has been sent to the scheduling desk, which is booking you an oncology follow-up slot this week. You will get an SMS with the date and time.',
       recommendedActions: [
-        'Contact your oncologist to schedule an evaluation this week',
-        'A bone scan or PET-CT may be needed to assess the spine',
-        'Blood work including calcium, alkaline phosphatase, and tumor markers',
-        'Continue pain management with Paracetamol as prescribed',
+        'The scheduling desk is booking an oncology follow-up slot for you this week',
+        'You will receive an SMS with the date and time — reply to it to reschedule',
+        'Send a new check-in if anything changes before your visit',
       ],
-      suggestedTests: ['Bone scan or PET-CT', 'Serum calcium', 'Alkaline phosphatase', 'Tumor markers (CA 15-3)'],
+      prepSteps: [
+        'Watch for an SMS confirming your appointment slot',
+        'Please ensure your caregiver is available to drive or accompany you',
+        'Bring your previous scan CDs and printed reports',
+        'Bring your current medicine list and hospital ID card',
+      ],
       redFlagTriggers: [],
       confidenceBand: 'moderate',
       citations: [
-        { id: 'c6', label: '[R1]', sourceType: 'record', sourceId: 'th8', sourceTitle: 'Treatment Summary — TCHP Neoadjuvant', snippet: 'Stage IIIA, HER2+, 3/14 nodes positive. Partial pathological response. Currently on maintenance trastuzumab.', date: '2024-12-30' },
-        { id: 'c7', label: '[G1]', sourceType: 'guideline', sourceId: 'g2', sourceTitle: 'ASCO Follow-up Recommendations', snippet: 'New or persistent bone pain should be evaluated with appropriate imaging. Bone is the most common site of breast cancer metastasis, particularly in patients with advanced initial staging.' },
+        { id: 'c6', label: '[R1]', sourceType: 'record', sourceId: 'th8', sourceTitle: 'Treatment Summary — TCHP Neoadjuvant', snippet: 'Attached for care-team review.', date: '2024-12-30' },
       ],
       disclaimer: 'This tool is for follow-up support and does not replace a doctor\'s diagnosis.',
     },
@@ -289,21 +296,21 @@ export const demoSymptomReports: SymptomReport[] = [
     associatedSymptoms: 'Sensitivity to light, mild confusion',
     createdAt: '2026-04-01T08:00:00Z',
     triageResult: {
-      urgencyLevel: 'emergency',
-      explanation: 'URGENT — Severe new headache with vision changes and confusion in a breast cancer survivor requires IMMEDIATE emergency evaluation. These symptoms may indicate brain metastasis, increased intracranial pressure, or other serious conditions that need urgent imaging and assessment.',
+      routingPriority: 'emergency',
+      explanation: 'Your check-in (Headache, Vision Changes, Nausea) mentions something on our emergency keyword list, so the on-call oncology coordinator is being paged. Your recent oncology reports and symptom logs have been compiled and attached to this high-priority alert for your care team to review. Please do not wait for a call back — contact emergency services or go to the nearest emergency department now.',
       recommendedActions: [
-        '🚨 Go to the nearest emergency department IMMEDIATELY',
-        'Do NOT drive yourself — call an ambulance or have someone drive you',
-        'Bring your cancer treatment records if readily available',
-        'Inform the ER team about your breast cancer history',
+        'Call emergency services or go to the nearest emergency department now',
+        'The on-call oncology coordinator has been paged with your check-in',
+        'Tell the emergency team you are under oncology follow-up',
       ],
-      suggestedTests: ['Emergency CT/MRI Brain', 'Neurological examination', 'Ophthalmologic assessment'],
-      redFlagTriggers: ['Severe headache with vision changes', 'Confusion symptoms reported'],
+      prepSteps: [
+        'Do not drive yourself — ask your caregiver to take you or call an ambulance',
+        'Take your treatment summary and medicine list if they are within reach',
+        'Share your emergency contact with the hospital staff',
+      ],
+      redFlagTriggers: ['Emergency keyword: worst headache', 'Emergency keyword: confusion', 'Combination: headache + vision changes'],
       confidenceBand: 'high',
-      citations: [
-        { id: 'c8', label: '[G1]', sourceType: 'guideline', sourceId: 'g1', sourceTitle: 'NCCN Breast Cancer Survivorship v2.2025', snippet: 'New neurological symptoms including severe headache, vision changes, seizures, or cognitive changes require emergent evaluation with brain imaging to rule out CNS metastasis.' },
-        { id: 'c9', label: '[G2]', sourceType: 'guideline', sourceId: 'g4', sourceTitle: 'Emergency Oncology Reference', snippet: 'Acute neurological symptoms in cancer patients should be treated as oncological emergencies. Time to diagnosis and intervention directly impacts outcomes.' },
-      ],
+      citations: [],
       disclaimer: 'This tool is for follow-up support and does not replace a doctor\'s diagnosis. PLEASE SEEK IMMEDIATE EMERGENCY CARE.',
     },
   },
@@ -394,8 +401,8 @@ export const demoAlerts: Alert[] = [
     patientName: 'Priya Sharma',
     type: 'ai_escalation',
     severity: 'urgent',
-    message: 'Urgent: Worsening cough with suspicious chest X-ray finding',
-    details: 'Patient reported persistent cough (3 weeks, worsening) with chest discomfort. Chest X-ray shows 1.2cm pulmonary nodule in right lower lobe. AI triage recommends urgent oncology review and CT chest.',
+    message: 'Coordinator SMS sent: check-in marked "getting worse" by patient',
+    details: 'Patient check-in lists cough (3 weeks, patient says worsening), chest discomfort and tiredness. Routed by escalation rules to the on-call coordinator for a same-day call back. Symptom log and the 2 reports uploaded on 26 Mar are attached for clinician review.',
     isRead: false,
     status: 'new',
     createdAt: '2026-03-28T10:35:00Z',
@@ -407,8 +414,8 @@ export const demoAlerts: Alert[] = [
     patientName: 'Fatima Khan',
     type: 'ai_escalation',
     severity: 'emergency',
-    message: '🚨 EMERGENCY: Severe headache with vision changes and confusion',
-    details: 'Patient reported sudden severe headache, blurred vision, nausea, and confusion. Multiple red flags triggered. Symptoms suggestive of possible CNS involvement. Emergency evaluation required.',
+    message: 'Emergency keywords in check-in — on-call coordinator paged',
+    details: 'Patient check-in contains emergency-list keywords ("worst headache", "confusion") and the headache + vision changes rule. Patient was shown the call-emergency-services screen. Please confirm contact with the patient or caregiver.',
     isRead: false,
     status: 'new',
     createdAt: '2026-04-01T08:05:00Z',
@@ -420,8 +427,8 @@ export const demoAlerts: Alert[] = [
     patientName: 'Meera Reddy',
     type: 'symptom_alert',
     severity: 'soon',
-    message: 'New bone pain requiring evaluation',
-    details: 'Worsening lower back pain for 2 weeks with increasing fatigue. Stage IIIA HER2+ patient on trastuzumab maintenance. Bone scan suggested.',
+    message: 'Follow-up slot requested this week',
+    details: 'Patient check-in lists lower back pain (2 weeks, patient says worsening) and tiredness. Routed to the scheduling desk for an oncology slot this week.',
     isRead: true,
     status: 'seen',
     clinicianId: 'u6',
@@ -445,9 +452,9 @@ export const demoAlerts: Alert[] = [
     patientId: 'p1',
     patientName: 'Priya Sharma',
     type: 'report_alert',
-    severity: 'urgent',
-    message: 'New chest X-ray uploaded with finding requiring follow-up',
-    details: 'Priya uploaded chest X-ray dated 25 Mar 2026. Automated parsing detected: "1.2cm nodule right lower lobe." This finding in a breast cancer survivor requires CT correlation. Flagged for clinician review.',
+    severity: 'soon',
+    message: 'New report uploaded: chest X-ray (25 Mar 2026)',
+    details: 'Priya uploaded a chest X-ray report from AIIMS Delhi. It has been filed to her record and queued for clinician review before her next visit.',
     isRead: false,
     status: 'new',
     createdAt: '2026-03-26T11:05:00Z',
@@ -483,207 +490,40 @@ export const demoTimeline: TimelineEvent[] = [
   { id: 'te5', patientId: 'p1', type: 'treatment', title: 'Radiation Therapy', description: '25 fractions to left chest wall and supraclavicular area.', date: '2025-03-15' },
   { id: 'te6', patientId: 'p1', type: 'treatment', title: 'Radiation Completed', description: 'Completed without interruption. Mild skin erythema resolved.', date: '2025-04-25' },
   { id: 'te7', patientId: 'p1', type: 'medication', title: 'Tamoxifen Started', description: 'Adjuvant endocrine therapy — Tamoxifen 20mg daily for 5 years.', date: '2025-05-01' },
-  { id: 'te8', patientId: 'p1', type: 'follow_up', title: 'Follow-up Visit — All Normal', description: 'Clinical exam and blood work. No concerns. CA 15-3 within normal limits.', date: '2025-08-15', urgencyLevel: 'routine' },
-  { id: 'te9', patientId: 'p1', type: 'follow_up', title: 'Follow-up + Mammogram — Clear', description: 'Right breast mammogram BIRADS 1. Clinical exam normal. Continuing Tamoxifen.', date: '2025-11-15', urgencyLevel: 'routine' },
-  { id: 'te10', patientId: 'p1', type: 'upload', title: 'Mammogram Report Uploaded', description: 'BIRADS 1 — Negative. No suspicious findings.', date: '2025-11-16' },
-  { id: 'te11', patientId: 'p1', type: 'follow_up', title: 'Follow-up Visit — Routine', description: 'CBC normal. Liver enzymes within limits. No symptoms.', date: '2026-02-15', urgencyLevel: 'routine' },
-  { id: 'te12', patientId: 'p1', type: 'upload', title: 'Chest X-ray Uploaded', description: '⚠️ 1.2cm nodule found in right lower lobe. CT recommended.', date: '2026-03-26', urgencyLevel: 'urgent' },
-  { id: 'te13', patientId: 'p1', type: 'upload', title: 'CBC Report Uploaded', description: 'Mild anemia (Hb 11.2). ESR mildly elevated (28).', date: '2026-03-26' },
-  { id: 'te14', patientId: 'p1', type: 'symptom', title: 'Symptom Report — Cough, Chest Pain, Fatigue', description: 'Persistent cough 3 weeks (worsening), mild chest pain, fatigue. AI triage: URGENT.', date: '2026-03-28', urgencyLevel: 'urgent' },
-  { id: 'te15', patientId: 'p1', type: 'ai_alert', title: 'AI Escalation — Urgent Oncology Review', description: 'Worsening cough + suspicious lung nodule. CT chest recommended urgently. Oncology review needed.', date: '2026-03-28', urgencyLevel: 'urgent' },
+  { id: 'te8', patientId: 'p1', type: 'follow_up', title: 'Follow-up Visit — Attended', description: 'Clinical exam and blood work completed. Clinic notes on file.', date: '2025-08-15' },
+  { id: 'te9', patientId: 'p1', type: 'follow_up', title: 'Follow-up + Mammogram — Attended', description: 'Clinical exam and mammogram completed. Clinic notes on file.', date: '2025-11-15' },
+  { id: 'te10', patientId: 'p1', type: 'upload', title: 'Mammogram Report Uploaded', description: 'Filed to record and shared with care team.', date: '2025-11-16' },
+  { id: 'te11', patientId: 'p1', type: 'follow_up', title: 'Follow-up Visit — Attended', description: 'Clinical exam and blood work completed. Clinic notes on file.', date: '2026-02-15' },
+  { id: 'te12', patientId: 'p1', type: 'upload', title: 'Chest X-ray Report Uploaded', description: 'Filed to record and queued for clinician review.', date: '2026-03-26' },
+  { id: 'te13', patientId: 'p1', type: 'upload', title: 'Blood Report Uploaded', description: 'Filed to record and queued for clinician review.', date: '2026-03-26' },
+  { id: 'te14', patientId: 'p1', type: 'symptom', title: 'Symptom Report — Cough, Chest Pain, Fatigue', description: 'Reported: cough for 3 weeks (getting worse), mild chest pain, tiredness. Sent to the care team.', date: '2026-03-28', urgencyLevel: 'urgent' },
+  { id: 'te15', patientId: 'p1', type: 'ai_alert', careTeamOnly: true, title: 'Coordinator SMS Alert Sent', description: 'Check-in, symptom log and recent reports sent to the on-call oncology coordinator for a same-day call back.', date: '2026-03-28', urgencyLevel: 'urgent' },
 ];
 
 // =============================================
-// Guideline Documents (summarized)
+// Patient Notifications (what patients and caregivers see)
 // =============================================
-export const demoGuidelines: GuidelineDocument[] = [
-  {
-    id: 'g1',
-    title: 'NCCN Breast Cancer Survivorship Guidelines v2.2025',
-    source: 'National Comprehensive Cancer Network',
-    category: 'Survivorship',
-    version: '2.2025',
-    content: `FOLLOW-UP SCHEDULE FOR BREAST CANCER SURVIVORS:
+export const demoPatientNotifications: PatientNotification[] = [
+  // Priya Sharma
+  { id: 'pn1', patientId: 'p1', kind: 'check_in', title: 'Your care team has your check-in', body: 'Thank you for checking in on 28 Mar. The on-call coordinator has your update and will call you back today. Please keep your phone nearby.', createdAt: '2026-03-28T10:35:00Z', isRead: false },
+  { id: 'pn2', patientId: 'p1', kind: 'appointment', title: 'Please rebook your follow-up visit', body: 'Your clinical exam and chest imaging visit on 15 Apr at AIIMS Delhi has passed. Call the clinic to pick a new date.', createdAt: '2026-04-16T09:00:00Z', isRead: false, actionHref: '/assistant', actionLabel: 'Help me prepare' },
+  { id: 'pn3', patientId: 'p1', kind: 'report', title: 'Chest X-ray report filed', body: 'Your report from 25 Mar is on your care timeline, and your care team can see it.', createdAt: '2026-03-26T11:05:00Z', isRead: true, actionHref: '/timeline', actionLabel: 'View timeline' },
+  { id: 'pn4', patientId: 'p1', kind: 'reminder', title: 'Daily medicine reminder', body: 'Tamoxifen 20mg, once a day, as prescribed by your doctor.', createdAt: '2026-03-01T08:00:00Z', isRead: true },
 
-HISTORY AND PHYSICAL EXAMINATION:
-- Every 3-6 months for the first 3 years
-- Every 6-12 months for years 4-5
-- Annually thereafter
+  // Anita Patel
+  { id: 'pn5', patientId: 'p2', kind: 'check_in', title: 'Your check-in was received', body: 'Your care team will look at it in this week\'s review. Your next visit on 20 May stays as planned.', createdAt: '2026-03-30T09:20:00Z', isRead: true },
+  { id: 'pn6', patientId: 'p2', kind: 'appointment', title: 'Upcoming visit: 20 May', body: 'Clinical exam and blood work at Tata Memorial Hospital. Bring your medicine list and any new reports.', createdAt: '2026-05-13T09:00:00Z', isRead: false, actionHref: '/assistant', actionLabel: 'Help me prepare' },
 
-MAMMOGRAPHY:
-- Annual diagnostic mammogram (contralateral or post-conservation)
-- First mammogram 6-12 months after completion of radiation
+  // Meera Reddy
+  { id: 'pn7', patientId: 'p3', kind: 'check_in', title: 'A follow-up visit is being booked', body: 'Your care team is booking you a visit this week. You will get an SMS with the date and time.', createdAt: '2026-03-29T14:15:00Z', isRead: false },
 
-IMAGING FOR METASTATIC SURVEILLANCE:
-- Routine use of advanced imaging (CT, PET, bone scans) NOT recommended for asymptomatic patients
-- Imaging should be driven by clinical symptoms or findings
+  // Fatima Khan
+  { id: 'pn8', patientId: 'p4', kind: 'check_in', title: 'Your care team was alerted', body: 'If you have not already, please call emergency services or go to the nearest hospital now. Your care team will also contact you.', createdAt: '2026-04-01T08:05:00Z', isRead: false },
+  { id: 'pn9', patientId: 'p4', kind: 'appointment', title: 'Please rebook your follow-up visit', body: 'Your clinical exam was due on 1 Apr. Call the clinic to pick a new date.', createdAt: '2026-04-02T09:00:00Z', isRead: true },
 
-SYMPTOMS REQUIRING PROMPT EVALUATION:
-- New persistent cough, dyspnea → Chest imaging
-- New bone pain, especially axial → Bone scan/imaging
-- Neurological symptoms → Brain MRI
-- Abdominal symptoms, elevated LFTs → Abdominal imaging/CT
-- New skin nodules or lymphadenopathy → Clinical evaluation ± biopsy
-
-RED FLAGS REQUIRING EMERGENCY EVALUATION:
-- Hemoptysis
-- Severe dyspnea
-- New seizures
-- Sudden focal neurological deficits
-- Severe chest pain
-- Cord compression symptoms (weakness, bladder dysfunction)
-
-ENDOCRINE THERAPY MONITORING:
-- Tamoxifen: Annual gynecological assessment, report abnormal bleeding
-- Aromatase inhibitors: Bone density assessment at baseline and periodically`,
-  },
-  {
-    id: 'g2',
-    title: 'ASCO Follow-up Care Recommendations for Breast Cancer Survivors',
-    source: 'American Society of Clinical Oncology',
-    category: 'Follow-up',
-    version: '2024',
-    content: `ASCO RECOMMENDS:
-
-CLINICAL VISITS: Every 3-6 months for first 3 years, then 6-12 months for 2 years, then annually.
-
-IMPORTANT RISK INFORMATION:
-- Stage II-III breast cancer: 10-15% risk of distant recurrence within 5 years
-- ER+ cancers: Risk continues beyond 5 years (late recurrence possible)
-- Most common sites of metastasis: Bone (40-75%), Lung (15-25%), Liver (5-15%), Brain (5-10%)
-- HER2+ and triple-negative subtypes: Higher early recurrence risk
-
-WHEN TO INVESTIGATE:
-- New persistent bone pain → Bone scan, serum calcium, alkaline phosphatase
-- New respiratory symptoms → Chest X-ray, then CT if abnormal
-- Hepatic symptoms or elevated liver enzymes → Abdominal imaging
-- Neurological symptoms → MRI brain with contrast
-
-TUMOR MARKERS:
-- Not recommended for routine surveillance
-- May be useful in clinical context with symptoms (CA 15-3, CEA)
-
-PATIENT EDUCATION:
-- Breast self-awareness (not formal BSE)
-- Report new symptoms promptly
-- Maintain regular follow-up schedule
-- Importance of adherence to endocrine therapy`,
-  },
-  {
-    id: 'g3',
-    title: 'Cancer-Related Fatigue: Assessment and Management',
-    source: 'NCCN Clinical Practice Guidelines',
-    category: 'Symptom Management',
-    version: '2025',
-    content: `CANCER-RELATED FATIGUE (CRF):
-Defined as a distressing, persistent sense of physical, emotional, or cognitive exhaustion related to cancer or its treatment.
-
-SCREENING:
-- Screen all survivors at each visit using 0-10 scale
-- Mild (1-3), Moderate (4-6), Severe (7-10)
-
-EVALUATION OF MODERATE-SEVERE FATIGUE:
-- Rule out recurrence
-- Check for treatable causes: anemia, thyroid dysfunction, depression, sleep disorders, medication effects, deconditioning, pain, nutritional deficiencies
-
-MANAGEMENT:
-- Activity and exercise (most evidence-based intervention)
-- Sleep hygiene
-- Psychosocial support
-- Nutritional optimization
-- Treat underlying causes`,
-  },
-  {
-    id: 'g4',
-    title: 'Emergency Oncology: Red Flag Symptoms',
-    source: 'OncoFollow Clinical Reference',
-    category: 'Emergency',
-    version: '1.0',
-    content: `ONCOLOGICAL EMERGENCIES — BREAST CANCER SURVIVORS:
-
-IMMEDIATE EMERGENCY (Call ambulance):
-- Hemoptysis (coughing blood)
-- Severe dyspnea at rest
-- New seizures
-- Sudden focal weakness or numbness
-- Confusion or altered consciousness
-- Severe chest pain
-- Syncope
-- Signs of spinal cord compression
-
-URGENT EVALUATION (Same/next day):
-- Persistent high fever (>103°F / 39.5°C) for >24 hours
-- Rapidly worsening symptoms
-- New severe bone pain preventing movement
-- Persistent severe headache unresponsive to analgesics
-- Significant weight loss (>10% in 3 months)
-- New jaundice
-
-SAFETY ESCALATION RULES:
-1. If ANY immediate emergency flag is detected → bypass normal triage → EMERGENCY
-2. If pattern matches brain metastasis presentation → EMERGENCY
-3. If pattern matches cord compression → EMERGENCY
-4. System must NEVER say "you do not need a doctor"
-5. Always recommend professional evaluation alongside any assessment`,
-  },
-];
-
-// =============================================
-// AI Assessments
-// =============================================
-export const demoAIAssessments: AIAssessment[] = [
-  {
-    id: 'ai1',
-    patientId: 'p1',
-    symptomReportId: 'sr1',
-    query: 'I have had a dry cough for 3 weeks that is getting worse, some chest pain when coughing, and I feel very tired.',
-    response: `Based on your symptom report and medical records, here is my assessment:
-
-**Concern Summary**
-Your persistent cough lasting 3 weeks with worsening trend, combined with your breast cancer history (Stage IIA, completed treatment 8 months ago), warrants prompt evaluation. Your recent chest X-ray [R1] shows a 1.2cm pulmonary nodule in the right lower lobe that needs further characterization.
-
-**Why This Is Concerning**
-Breast cancer can recur in the lungs in 15-25% of metastatic cases [G2]. A new pulmonary nodule found on imaging in a breast cancer survivor, especially when accompanied by respiratory symptoms, requires urgent evaluation to determine if it represents metastatic disease, a new primary, or a benign finding.
-
-**Your Triage Category: URGENT ONCOLOGY REVIEW**
-
-**Recommended Next Steps**
-1. Schedule an urgent appointment with Dr. Rajesh Kumar within the next few days
-2. Get a CT scan of the chest with contrast for detailed nodule evaluation [G1]
-3. Complete blood work including tumor markers (CA 15-3, CEA)
-4. Your recent CBC [R2] shows mild anemia (Hb 11.2) and mildly elevated ESR (28) which should also be discussed
-
-**Suggested Tests to Discuss with Your Doctor**
-- CT Chest with contrast (priority)
-- Tumor markers: CA 15-3, CEA
-- Complete metabolic panel
-- Consider PET-CT if CT shows concerning features
-
-**Important Disclaimer**
-This tool is for follow-up support and does not replace a doctor's diagnosis. The lung nodule may have many possible explanations — only your doctor can determine the cause through proper diagnostic evaluation. Please do not delay your appointment.`,
-    urgencyLevel: 'urgent',
-    explanation: 'Worsening respiratory symptoms + suspicious chest imaging in breast cancer survivor.',
-    recommendedActions: ['Schedule urgent oncology appointment', 'CT Chest with contrast', 'Tumor markers', 'Complete blood work'],
-    suggestedTests: ['CT Chest with contrast', 'CA 15-3', 'CEA', 'Complete metabolic panel'],
-    citations: [
-      { id: 'c1', label: '[R1]', sourceType: 'record', sourceId: 'doc1', sourceTitle: 'Chest X-ray PA View — Mar 2026', snippet: 'Small 1.2cm nodule noted in the right lower lobe.', date: '2026-03-25' },
-      { id: 'c10', label: '[R2]', sourceType: 'record', sourceId: 'doc2', sourceTitle: 'CBC Report — Mar 2026', snippet: 'Hemoglobin 11.2 g/dL (low), ESR 28 mm/hr (elevated).', date: '2026-03-25' },
-      { id: 'c3', label: '[G1]', sourceType: 'guideline', sourceId: 'g1', sourceTitle: 'NCCN Survivorship Guidelines', snippet: 'New persistent respiratory symptoms → chest imaging. CT preferred for detailed evaluation.' },
-      { id: 'c4', label: '[G2]', sourceType: 'guideline', sourceId: 'g2', sourceTitle: 'ASCO Follow-up Recommendations', snippet: 'Most common sites of metastasis: Bone (40-75%), Lung (15-25%), Liver (5-15%), Brain (5-10%).' },
-    ],
-    redFlagTriggers: [],
-    confidenceBand: 'high',
-    mode: 'patient',
-    createdAt: '2026-03-28T10:32:00Z',
-    retrievedDocuments: [
-      { id: 'rd1', title: 'Chest X-ray PA View — Mar 2026', type: 'record', date: '2026-03-25', relevanceScore: 0.95, snippet: '1.2cm nodule in right lower lobe...' },
-      { id: 'rd2', title: 'CBC Report — Mar 2026', type: 'record', date: '2026-03-25', relevanceScore: 0.78, snippet: 'Hb 11.2, ESR 28...' },
-      { id: 'rd3', title: 'Treatment Summary — Surgery', type: 'record', date: '2024-09-12', relevanceScore: 0.82, snippet: 'Stage IIA IDC, 2/12 nodes+...' },
-      { id: 'rd4', title: 'NCCN Survivorship Guidelines', type: 'guideline', relevanceScore: 0.91, snippet: 'New persistent cough → chest imaging...' },
-      { id: 'rd5', title: 'ASCO Follow-up Recommendations', type: 'guideline', relevanceScore: 0.88, snippet: 'Lung metastasis in 15-25% of cases...' },
-    ],
-    reasoningSummary: 'The system retrieved the patient\'s recent chest X-ray showing a pulmonary nodule, CBC showing mild anemia, and treatment history confirming Stage IIA breast cancer with node-positive disease. Combined with worsening respiratory symptoms, NCCN and ASCO guidelines indicate this pattern warrants urgent evaluation with CT chest to rule out pulmonary metastasis.',
-  },
+  // Kavita Joshi (caregiver: Ramesh Joshi)
+  { id: 'pn10', patientId: 'p5', kind: 'appointment', title: 'Upcoming visit: 1 Sep', body: 'Clinical exam and blood work at Ruby Hall Clinic. Ramesh, please plan to accompany Kavita.', createdAt: '2026-08-25T09:00:00Z', isRead: false, actionHref: '/assistant', actionLabel: 'Help me prepare' },
+  { id: 'pn11', patientId: 'p5', kind: 'reminder', title: 'Caregiver access added', body: 'Ramesh Joshi can now send check-ins and upload reports on Kavita\'s behalf.', createdAt: '2025-09-05T10:00:00Z', isRead: true },
 ];
 
 // =============================================
@@ -696,7 +536,7 @@ export const demoAuditLogs: AuditLog[] = [
   { id: 'al4', userId: 'u6', userName: 'Dr. Rajesh Kumar', action: 'alert_reviewed', resource: 'alerts/a3', details: 'Reviewed bone pain alert for Meera Reddy', timestamp: '2026-03-30T09:00:00Z' },
   { id: 'al5', userId: 'u6', userName: 'Dr. Rajesh Kumar', action: 'clinician_note_added', resource: 'clinician_notes/cn1', details: 'Added note for Meera Reddy: ordering bone scan', timestamp: '2026-03-30T09:00:00Z' },
   { id: 'al6', userId: 'u8', userName: 'Admin User', action: 'user_login', resource: 'auth', details: 'Admin login successful', timestamp: '2026-04-01T08:00:00Z' },
-  { id: 'al7', userId: 'u4', userName: 'Fatima Khan', action: 'symptom_report_created', resource: 'symptom_reports/sr4', details: 'EMERGENCY: Severe headache, vision changes, confusion', timestamp: '2026-04-01T08:00:00Z' },
+  { id: 'al7', userId: 'u4', userName: 'Fatima Khan', action: 'symptom_report_created', resource: 'symptom_reports/sr4', details: 'Check-in routed to emergency escalation (emergency keywords matched)', timestamp: '2026-04-01T08:00:00Z' },
 ];
 
 // =============================================
@@ -725,13 +565,30 @@ export function getDocumentsForPatient(patientId: string): UploadedDocument[] {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function getAlertsForClinician(_clinicianId?: string): Alert[] {
   return demoAlerts.sort((a, b) => {
-    const severityOrder: Record<UrgencyLevel, number> = { emergency: 0, urgent: 1, soon: 2, routine: 3 };
+    const severityOrder: Record<RoutingPriority, number> = { emergency: 0, urgent: 1, soon: 2, routine: 3 };
     return (severityOrder[a.severity] - severityOrder[b.severity]) || (new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   });
 }
 
 export function getTimelineForPatient(patientId: string): TimelineEvent[] {
   return demoTimeline.filter(te => te.patientId === patientId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+/**
+ * The patient record a signed-in patient or caregiver acts on.
+ * Clinicians and admins are not tied to a single patient.
+ */
+export function getPatientForUser(user: User | null): Patient | undefined {
+  if (!user) return undefined;
+  if (user.role === 'patient') return getPatientByUserId(user.id);
+  if (user.role === 'caregiver') return demoPatients.find(p => p.caregiverUserIds?.includes(user.id));
+  return undefined;
+}
+
+export function getNotificationsForPatient(patientId: string): PatientNotification[] {
+  return demoPatientNotifications
+    .filter(n => n.patientId === patientId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export function getAlertsForPatient(patientId: string): Alert[] {

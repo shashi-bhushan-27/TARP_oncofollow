@@ -6,21 +6,12 @@ import {
 
 import { demoAlerts } from '@/data/demoData';
 import { format, parseISO } from 'date-fns';
-import { UrgencyLevel } from '@/types';
-
-function UrgencyChip({ level }: { level: UrgencyLevel }) {
-  const classes: Record<string, string> = {
-    routine: 'chip-routine', soon: 'chip-soon', urgent: 'chip-urgent', emergency: 'chip-emergency',
-  };
-  const labels: Record<string, string> = {
-    routine: '● Routine', soon: '● Contact Soon', urgent: '● Urgent', emergency: '🚨 Emergency',
-  };
-  return <span className={classes[level]}>{labels[level]}</span>;
-}
+import { RoutingPriority, ROUTING_PRIORITY_SHORT_LABELS } from '@/types';
+import { RoutingChip } from '@/components/RoutingChip';
 
 export default function AlertsPage() {
 
-  const [filter, setFilter] = useState<UrgencyLevel | 'all'>('all');
+  const [filter, setFilter] = useState<RoutingPriority | 'all'>('all');
   const [alerts, setAlerts] = useState(demoAlerts);
 
   const filtered = filter === 'all' ? alerts : alerts.filter(a => a.severity === filter);
@@ -29,7 +20,7 @@ export default function AlertsPage() {
     setAlerts(prev => prev.map(a => a.id === id ? { ...a, isRead: true, status: 'seen' as const } : a));
   };
 
-  const severityColor = (s: UrgencyLevel) => {
+  const severityColor = (s: RoutingPriority) => {
     switch (s) {
       case 'emergency': return 'border-l-emergency-500 bg-emergency-50/30 dark:bg-emergency-950/20';
       case 'urgent': return 'border-l-urgent-500 bg-urgent-50/30 dark:bg-urgent-950/20';
@@ -42,8 +33,8 @@ export default function AlertsPage() {
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Alerts</h1>
-          <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
+          <h1 className="page-title">Alerts queue</h1>
+          <p className="text-sm text-muted mt-1">
             {filtered.filter(a => !a.isRead).length} unread alerts
           </p>
         </div>
@@ -58,10 +49,10 @@ export default function AlertsPage() {
             className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
               filter === f
                 ? 'bg-primary-600 text-white'
-                : 'bg-[var(--card-bg)] border border-[var(--card-border)] text-surface-600 dark:text-surface-400 hover:bg-[var(--hover-bg)]'
+                : 'bg-[var(--card-bg)] border border-[var(--card-border)] text-muted hover:bg-[var(--hover-bg)]'
             }`}
           >
-            {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+            {f === 'all' ? 'All' : ROUTING_PRIORITY_SHORT_LABELS[f]}
           </button>
         ))}
       </div>
@@ -84,8 +75,8 @@ export default function AlertsPage() {
               }`} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <UrgencyChip level={alert.severity} />
-                  <span className="text-2xs text-surface-400">
+                  <RoutingChip priority={alert.severity} />
+                  <span className="text-2xs text-subtle">
                     {alert.patientName}
                   </span>
                   {!alert.isRead && (
@@ -93,9 +84,9 @@ export default function AlertsPage() {
                   )}
                 </div>
                 <p className="text-sm font-medium text-foreground mb-1">{alert.message}</p>
-                <p className="text-xs text-surface-500 dark:text-surface-400 leading-relaxed">{alert.details}</p>
+                <p className="text-xs text-muted leading-relaxed">{alert.details}</p>
                 <div className="flex items-center gap-3 mt-3">
-                  <span className="text-2xs text-surface-400 flex items-center gap-1">
+                  <span className="text-2xs text-subtle flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     {format(parseISO(alert.createdAt), 'MMM d, h:mm a')}
                   </span>
@@ -117,7 +108,7 @@ export default function AlertsPage() {
       {filtered.length === 0 && (
         <div className="text-center py-16">
           <Bell className="w-12 h-12 text-surface-300 mx-auto mb-3" />
-          <p className="text-surface-400">No alerts found</p>
+          <p className="text-subtle">No alerts found</p>
         </div>
       )}
     </div>

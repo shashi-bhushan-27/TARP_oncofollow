@@ -31,8 +31,7 @@ export default function UploadPage() {
     reportDate: '2026-03-25',
     hospital: 'AIIMS Delhi',
     bodyRegion: 'chest' as BodyRegion,
-    keyFindings: '',
-    impression: '',
+    patientNote: '',
   });
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -52,7 +51,8 @@ export default function UploadPage() {
     setFile(f);
     setIsProcessing(true);
 
-    // Simulate OCR/parsing
+    // Pre-fill the filing details from the file name; the patient confirms or edits them.
+    // The report's medical content is never read or interpreted — it goes to the care team as-is.
     setTimeout(() => {
       setParsedData({
         reportType: f.name.includes('xray') || f.name.includes('chest') ? 'xray' : 
@@ -60,8 +60,7 @@ export default function UploadPage() {
         reportDate: '2026-03-25',
         hospital: 'AIIMS Delhi',
         bodyRegion: f.name.includes('chest') ? 'chest' : f.name.includes('blood') ? 'blood' : 'other',
-        keyFindings: 'Small 1.2cm nodule noted in the right lower lobe. No pleural effusion. Heart size normal.',
-        impression: 'Right lower lobe pulmonary nodule. Recommend CT chest with contrast for further characterization.',
+        patientNote: '',
       });
       setIsProcessing(false);
       setStep('preview');
@@ -75,8 +74,8 @@ export default function UploadPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Upload Medical Report</h1>
-        <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
+        <h1 className="page-title">Upload a report</h1>
+        <p className="text-sm text-muted mt-1">
           Upload your X-ray, CT, blood work, or any medical document
         </p>
       </div>
@@ -93,9 +92,9 @@ export default function UploadPage() {
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
         >
-          <Upload className="w-12 h-12 text-surface-300 dark:text-surface-600 mx-auto mb-4" />
+          <Upload className="w-12 h-12 text-subtle mx-auto mb-4" />
           <p className="text-foreground font-medium mb-2">Drag and drop your report here</p>
-          <p className="text-sm text-surface-400 mb-4">PDF, JPG, PNG — up to 20MB</p>
+          <p className="text-sm text-subtle mb-4">PDF, JPG, PNG — up to 20MB</p>
           <label className="btn-primary text-sm cursor-pointer">
             <FileText className="w-4 h-4 mr-2" />
             Choose File
@@ -113,13 +112,13 @@ export default function UploadPage() {
       {isProcessing && (
         <div className="card p-8 text-center">
           <div className="w-12 h-12 rounded-xl bg-primary-50 dark:bg-primary-950 flex items-center justify-center mx-auto mb-4">
-            <Search className="w-6 h-6 text-primary-600 animate-pulse-soft" />
+            <Search className="w-6 h-6 text-primary-600" />
           </div>
-          <p className="font-medium text-foreground mb-2">Analyzing your document...</p>
-          <p className="text-sm text-surface-400">Extracting text and identifying key findings</p>
+          <p className="font-medium text-foreground mb-2">Preparing your document...</p>
+          <p className="text-sm text-subtle">Filling in the filing details for you to check</p>
           <div className="mt-4 space-y-2">
-            <div className="skeleton h-3 w-3/4 rounded-full mx-auto" />
-            <div className="skeleton h-3 w-1/2 rounded-full mx-auto" />
+            <div className="skeleton h-3 w-3/4 mx-auto" />
+            <div className="skeleton h-3 w-1/2 mx-auto" />
           </div>
         </div>
       )}
@@ -134,7 +133,7 @@ export default function UploadPage() {
             </div>
             <div className="flex-1">
               <p className="text-sm font-medium text-foreground">{file?.name || 'document.pdf'}</p>
-              <p className="text-xs text-surface-400">{file ? `${(file.size / 1024).toFixed(1)} KB` : '--'}</p>
+              <p className="text-xs text-subtle">{file ? `${(file.size / 1024).toFixed(1)} KB` : '--'}</p>
             </div>
             <button onClick={() => { setFile(null); setStep('upload'); }} className="btn-ghost text-xs text-emergency-600">
               Remove
@@ -145,9 +144,9 @@ export default function UploadPage() {
           <div className="card p-6 space-y-4">
             <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
               <Eye className="w-5 h-5 text-primary-600" />
-              Extracted Information
+              Filing Details
             </h2>
-            <p className="text-xs text-surface-400">Please verify and correct any details below</p>
+            <p className="text-xs text-subtle">Check these so your care team can find the report quickly</p>
 
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
@@ -195,21 +194,16 @@ export default function UploadPage() {
             </div>
 
             <div>
-              <label className="label">Key Findings</label>
+              <label className="label">Note for your care team (optional)</label>
               <textarea
                 className="input-field text-sm min-h-[80px] resize-y"
-                value={parsedData.keyFindings}
-                onChange={e => setParsedData(p => ({ ...p, keyFindings: e.target.value }))}
+                placeholder="e.g., This is from the scan the doctor booked last month. I have a question about it for my next visit."
+                value={parsedData.patientNote}
+                onChange={e => setParsedData(p => ({ ...p, patientNote: e.target.value }))}
               />
-            </div>
-
-            <div>
-              <label className="label">Impression / Conclusion</label>
-              <textarea
-                className="input-field text-sm min-h-[60px] resize-y"
-                value={parsedData.impression}
-                onChange={e => setParsedData(p => ({ ...p, impression: e.target.value }))}
-              />
+              <p className="text-2xs text-subtle mt-1">
+                Your report is shared with your care team as-is. OncoFollow does not read or interpret its results.
+              </p>
             </div>
           </div>
 
@@ -227,11 +221,11 @@ export default function UploadPage() {
       {/* Confirmation */}
       {step === 'confirm' && (
         <div className="card p-8 text-center animate-scale-in">
-          <div className="w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center mx-auto mb-4">
+          <div className="w-12 h-12 rounded-lg bg-primary-50 dark:bg-primary-950 flex items-center justify-center mx-auto mb-4">
             <Check className="w-8 h-8 text-primary-600" />
           </div>
           <h2 className="text-xl font-bold text-foreground mb-2">Report Saved Successfully</h2>
-          <p className="text-sm text-surface-400 mb-6">
+          <p className="text-sm text-subtle mb-6">
             Your {reportTypes.find(t => t.value === parsedData.reportType)?.label || 'report'} has been added to your timeline and is available for your care team.
           </p>
           <div className="flex gap-3 justify-center">

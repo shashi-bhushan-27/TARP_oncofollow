@@ -1,14 +1,16 @@
 // =============================================
-// OncoFollow — Triage Engine
-// Rule-based triage combining symptoms, history, and guidelines
+// OncoFollow — Operational Routing Engine
+// Rule-based routing of patient check-ins into care-team queues.
+// It does not diagnose, interpret reports, or recommend tests or treatment;
+// every routing decision is reviewed and can be overridden by the care team.
 // =============================================
 
 import {
-  SymptomEntry, TriageResult, Citation, UrgencyLevel,
+  SymptomEntry, TriageResult, Citation, RoutingPriority,
   Patient, UploadedDocument
 } from '@/types';
 import {
-  scanForRedFlags, scanSymptomsForRedFlags, resolveUrgency,
+  scanForRedFlags, scanSymptomsForRedFlags, resolveRoutingPriority,
   SAFETY_DISCLAIMER, EMERGENCY_DISCLAIMER
 } from './safety';
 
@@ -20,73 +22,10 @@ interface TriageInput {
   recentDocuments: UploadedDocument[];
 }
 
-// Symptom → cancer concern mapping
-const CANCER_CONCERN_MAP: Record<string, {
-  concern: string;
-  possibleSite: string;
-  suggestedTests: string[];
-  guidelineSnippet: string;
-}> = {
-  cough: {
-    concern: 'Persistent cough in a breast cancer survivor may indicate pulmonary involvement',
-    possibleSite: 'Lung',
-    suggestedTests: ['Chest X-ray', 'CT Chest with contrast', 'Tumor markers (CA 15-3, CEA)'],
-    guidelineSnippet: 'New persistent respiratory symptoms in breast cancer survivors should prompt chest imaging [NCCN Survivorship Guidelines]',
-  },
-  breathlessness: {
-    concern: 'Dyspnea may indicate pleural effusion, pulmonary involvement, or cardiac effects of treatment',
-    possibleSite: 'Lung/Pleura',
-    suggestedTests: ['Chest X-ray', 'CT Chest', 'Echocardiogram', 'Pulmonary function tests'],
-    guidelineSnippet: 'Evaluate for pulmonary metastasis, pleural effusion, and treatment-related cardiac toxicity [NCCN]',
-  },
-  chest_pain: {
-    concern: 'Chest discomfort warrants evaluation, especially in context of prior chest radiation or chemotherapy',
-    possibleSite: 'Chest wall/Lung',
-    suggestedTests: ['Chest X-ray', 'ECG', 'Echocardiogram if cardiac concern'],
-    guidelineSnippet: 'Chest wall pain may be post-radiation or musculoskeletal. New/progressive pain needs evaluation [ASCO]',
-  },
-  bone_pain: {
-    concern: 'New bone pain in a breast cancer survivor, especially in the spine, pelvis, or ribs, raises concern for bone metastasis',
-    possibleSite: 'Bone',
-    suggestedTests: ['Bone scan', 'PET-CT', 'Serum calcium', 'Alkaline phosphatase', 'Tumor markers'],
-    guidelineSnippet: 'Bone is the most common site of breast cancer metastasis (40-75% of metastatic cases) [ASCO]',
-  },
-  headache: {
-    concern: 'Persistent or severe headache may indicate CNS involvement, especially if associated with neurological symptoms',
-    possibleSite: 'Brain',
-    suggestedTests: ['MRI Brain with contrast', 'Neurological examination', 'Ophthalmologic assessment'],
-    guidelineSnippet: 'Neurological symptoms require brain MRI to rule out CNS metastasis [NCCN]',
-  },
-  fatigue: {
-    concern: 'Fatigue is common in survivors but persistent worsening fatigue should be evaluated for underlying causes',
-    possibleSite: 'Systemic',
-    suggestedTests: ['CBC', 'Thyroid function', 'Metabolic panel', 'Vitamin D/B12'],
-    guidelineSnippet: 'Screen for treatable causes: anemia, thyroid dysfunction, depression [NCCN CRF Guidelines]',
-  },
-  weight_loss: {
-    concern: 'Unexplained weight loss (>5% in 6 months) may be a sign of disease activity',
-    possibleSite: 'Systemic',
-    suggestedTests: ['CT Chest/Abdomen/Pelvis', 'PET-CT', 'Tumor markers', 'Complete metabolic panel'],
-    guidelineSnippet: 'Significant unexplained weight loss warrants comprehensive evaluation for recurrence [ASCO]',
-  },
-  fever: {
-    concern: 'Persistent fever without clear infection source should be evaluated',
-    possibleSite: 'Systemic',
-    suggestedTests: ['CBC with differential', 'Blood cultures', 'CT Chest/Abdomen', 'Urinalysis'],
-    guidelineSnippet: 'Persistent fever >103°F for >24 hours is an urgent symptom requiring evaluation [Emergency Oncology Reference]',
-  },
-  vision_changes: {
-    concern: 'Visual changes may indicate CNS involvement or treatment-related effects',
-    possibleSite: 'Brain/Orbit',
-    suggestedTests: ['MRI Brain with contrast', 'Ophthalmologic examination', 'Visual field testing'],
-    guidelineSnippet: 'Visual symptoms in cancer survivors require urgent neurological and ophthalmological evaluation [NCCN]',
-  },
-};
-
 /**
- * Calculate base urgency from symptoms
+ * Pick a queue from the patient's own answers (severity, duration, frequency, trend)
  */
-function calculateBaseUrgency(symptoms: SymptomEntry[]): UrgencyLevel {
+function routeBySelfReport(symptoms: SymptomEntry[]): RoutingPriority {
   let maxScore = 0;
 
   for (const symptom of symptoms) {
@@ -113,7 +52,7 @@ function calculateBaseUrgency(symptoms: SymptomEntry[]): UrgencyLevel {
     maxScore = Math.max(maxScore, score);
   }
 
-  // Multiple symptoms increase urgency
+  // Several reported symptoms move the check-in up a queue
   if (symptoms.length >= 3) maxScore += 2;
   else if (symptoms.length >= 2) maxScore += 1;
 
@@ -123,195 +62,155 @@ function calculateBaseUrgency(symptoms: SymptomEntry[]): UrgencyLevel {
 }
 
 /**
- * Generate explanation based on symptoms and patient context
+ * Describe where the check-in was routed and what was attached for the care team
  */
 function generateExplanation(
   symptoms: SymptomEntry[],
-  patient: Patient,
-  urgency: UrgencyLevel,
+  priority: RoutingPriority,
   recentDocs: UploadedDocument[]
 ): string {
-  const symptomNames = symptoms.map(s => s.label).join(', ');
-  const cancerContext = `Stage ${patient.cancerStage} breast cancer (${patient.receptorStatus.join('/')})`;
-  const timeSinceTreatment = getTimeSinceTreatment(patient);
+  const symptomNames = symptoms.map(s => s.label).join(', ') || 'your voice/text check-in';
+  const attachment = recentDocs.length > 0
+    ? 'Your recent oncology reports and symptom logs have been compiled and attached to this high-priority alert for your care team to review.'
+    : 'Your symptom log has been compiled and attached to this alert for your care team to review.';
 
-  if (urgency === 'emergency') {
-    return `URGENT — Your reported symptoms (${symptomNames}) include red flag indicators that require immediate emergency evaluation. Given your ${cancerContext} history, these symptoms need to be assessed without delay.`;
+  if (priority === 'emergency') {
+    return `Your check-in (${symptomNames}) mentions something on our emergency keyword list, so the on-call oncology coordinator is being paged. ${attachment} Please do not wait for a call back — contact emergency services or go to the nearest emergency department now.`;
   }
 
-  if (urgency === 'urgent') {
-    let explanation = `Your symptoms (${symptomNames}) in the context of your ${cancerContext} history (${timeSinceTreatment}) warrant prompt evaluation.`;
-    const xrayDoc = recentDocs.find(d => d.reportType === 'xray' || d.reportType === 'ct_scan');
-    if (xrayDoc && xrayDoc.keyFindings) {
-      explanation += ` Your recent ${xrayDoc.reportType === 'xray' ? 'chest X-ray' : 'CT scan'} findings ("${xrayDoc.keyFindings.substring(0, 100)}...") add to the clinical concern.`;
-    }
-    return explanation;
+  if (priority === 'urgent') {
+    return `Your check-in (${symptomNames}) has been routed to the on-call oncology coordinator by SMS for a same-day call back. ${attachment}`;
   }
 
-  if (urgency === 'soon') {
-    return `Your symptoms (${symptomNames}) should be evaluated by your oncology team in the coming days. While these may have benign causes, your ${cancerContext} history makes clinical assessment important to ensure appropriate follow-up.`;
+  if (priority === 'soon') {
+    return `Your check-in (${symptomNames}) has been sent to the scheduling desk, which is booking you an oncology follow-up slot this week. You will get an SMS with the date and time.`;
   }
 
-  return `Your reported symptom(s) — ${symptomNames} — appear to be within the range of routine monitoring for a ${cancerContext} survivor (${timeSinceTreatment}). Continue your scheduled follow-up plan. If symptoms worsen or new symptoms develop, please report again promptly.`;
-}
-
-function getTimeSinceTreatment(patient: Patient): string {
-  const lastTreatment = patient.treatmentHistory
-    .filter(t => t.endDate)
-    .sort((a, b) => new Date(b.endDate!).getTime() - new Date(a.endDate!).getTime())[0];
-
-  if (!lastTreatment?.endDate) return 'currently in treatment';
-
-  const months = Math.floor((Date.now() - new Date(lastTreatment.endDate).getTime()) / (1000 * 60 * 60 * 24 * 30));
-  if (months < 1) return 'recently completed treatment';
-  if (months === 1) return '1 month post-treatment';
-  return `${months} months post-treatment`;
+  return `Your check-in (${symptomNames}) has been added to your care team's standard weekly review queue. Your next scheduled follow-up stays as planned, and you can send a new check-in at any time if anything changes.`;
 }
 
 /**
- * Build citations from patient documents and guidelines
+ * List the patient records attached to the care-team alert
  */
-function buildCitations(
-  symptoms: SymptomEntry[],
-  recentDocs: UploadedDocument[]
-): Citation[] {
-  const citations: Citation[] = [];
-  let recordIndex = 1;
-  let guidelineIndex = 1;
-
-  // Add document citations
-  for (const doc of recentDocs.slice(0, 3)) {
-    citations.push({
-      id: `cite-r${recordIndex}`,
-      label: `[R${recordIndex}]`,
-      sourceType: 'record',
-      sourceId: doc.id,
-      sourceTitle: `${doc.reportType === 'xray' ? 'X-ray' : doc.reportType === 'blood_report' ? 'Blood Report' : doc.reportType} — ${doc.reportDate}`,
-      snippet: doc.keyFindings || doc.impression || '',
-      date: doc.reportDate,
-    });
-    recordIndex++;
-  }
-
-  // Add guideline citations based on symptoms
-  const addedGuidelines = new Set<string>();
-  for (const symptom of symptoms) {
-    const concern = CANCER_CONCERN_MAP[symptom.name];
-    if (concern && !addedGuidelines.has(concern.guidelineSnippet)) {
-      addedGuidelines.add(concern.guidelineSnippet);
-      citations.push({
-        id: `cite-g${guidelineIndex}`,
-        label: `[G${guidelineIndex}]`,
-        sourceType: 'guideline',
-        sourceId: `guideline-${guidelineIndex}`,
-        sourceTitle: concern.guidelineSnippet.includes('NCCN') ? 'NCCN Survivorship Guidelines' : 'ASCO Follow-up Recommendations',
-        snippet: concern.guidelineSnippet,
-      });
-      guidelineIndex++;
-    }
-  }
-
-  return citations;
+function buildAttachments(recentDocs: UploadedDocument[]): Citation[] {
+  return recentDocs.slice(0, 3).map((doc, i) => ({
+    id: `cite-r${i + 1}`,
+    label: `[R${i + 1}]`,
+    sourceType: 'record',
+    sourceId: doc.id,
+    sourceTitle: `${doc.reportType === 'xray' ? 'X-ray' : doc.reportType === 'blood_report' ? 'Blood Report' : doc.reportType} — ${doc.reportDate}`,
+    snippet: `From ${doc.hospital}. Attached for care-team review.`,
+    date: doc.reportDate,
+  }));
 }
 
 /**
- * Main triage function
+ * Main routing function
  */
 export function runTriage(input: TriageInput): TriageResult {
   const { symptoms, freeText, associatedSymptoms, patient, recentDocuments } = input;
   const allText = `${freeText} ${associatedSymptoms}`;
 
-  // Step 1: Red-flag scan
+  // Step 1: Emergency keyword scan (safety net)
   const textFlags = scanForRedFlags(allText);
   const symptomFlags = scanSymptomsForRedFlags(symptoms);
 
-  // Step 2: Base urgency
-  const baseUrgency = calculateBaseUrgency(symptoms);
+  // Step 2: Queue from the patient's own answers
+  const baseRouting = routeBySelfReport(symptoms);
 
-  // Step 3: Resolve final urgency (red flags override everything)
-  const urgency = resolveUrgency(textFlags, symptomFlags, baseUrgency);
+  // Step 3: Resolve final routing priority (emergency keywords override everything)
+  const priority = resolveRoutingPriority(textFlags, symptomFlags, baseRouting);
 
-  // Step 4: Collect all red-flag triggers
+  // Step 4: Collect escalation triggers for the audit trail
   const redFlagTriggers = [...textFlags.triggers, ...symptomFlags.triggers];
 
-  // Step 5: Generate explanation
-  const explanation = generateExplanation(symptoms, patient, urgency, recentDocuments);
+  // Step 5: Routing summary
+  const explanation = generateExplanation(symptoms, priority, recentDocuments);
 
-  // Step 6: Collect recommended actions
-  const recommendedActions = generateRecommendedActions(symptoms, urgency);
+  // Step 6: What happens next
+  const recommendedActions = generateNextSteps(priority);
 
-  // Step 7: Collect suggested tests
-  const suggestedTests = collectSuggestedTests(symptoms, urgency);
+  // Step 7: Visit preparation steps
+  const prepSteps = collectPrepSteps(priority, patient);
 
-  // Step 8: Build citations
-  const citations = buildCitations(symptoms, recentDocuments);
+  // Step 8: Records attached to the alert
+  const citations = buildAttachments(recentDocuments);
 
   // Step 9: Determine confidence
-  const confidenceBand = redFlagTriggers.length > 0 ? 'high' as const :
-    symptoms.length >= 2 ? 'moderate' as const : 'moderate' as const;
+  const confidenceBand = redFlagTriggers.length > 0 ? 'high' as const : 'moderate' as const;
 
   return {
-    urgencyLevel: urgency,
+    routingPriority: priority,
     explanation,
     recommendedActions,
-    suggestedTests,
+    prepSteps,
     redFlagTriggers,
     confidenceBand,
     citations,
-    disclaimer: urgency === 'emergency' ? EMERGENCY_DISCLAIMER : SAFETY_DISCLAIMER,
+    disclaimer: priority === 'emergency' ? EMERGENCY_DISCLAIMER : SAFETY_DISCLAIMER,
   };
 }
 
-function generateRecommendedActions(symptoms: SymptomEntry[], urgency: UrgencyLevel): string[] {
-  if (urgency === 'emergency') {
+function generateNextSteps(priority: RoutingPriority): string[] {
+  if (priority === 'emergency') {
     return [
-      '🚨 Go to the nearest emergency department IMMEDIATELY',
-      'Do NOT drive yourself — call an ambulance or have someone drive you',
-      'Bring your cancer treatment records if readily available',
-      'Inform the ER team about your breast cancer history',
+      'Call emergency services or go to the nearest emergency department now',
+      'The on-call oncology coordinator has been paged with your check-in',
+      'Tell the emergency team you are under oncology follow-up',
     ];
   }
 
-  if (urgency === 'urgent') {
+  if (priority === 'urgent') {
     return [
-      'Schedule an urgent appointment with your oncologist within the next few days',
-      'Complete recommended imaging and blood work promptly',
-      'Keep a daily log of your symptoms and any changes',
-      'If symptoms suddenly worsen, go to the emergency department',
+      'An SMS alert has gone to the on-call oncology coordinator',
+      'Keep your phone nearby — the care team will call you back today',
+      'If you feel much worse before they reach you, go to the nearest emergency department',
     ];
   }
 
-  if (urgency === 'soon') {
+  if (priority === 'soon') {
     return [
-      'Contact your oncologist to schedule an evaluation this week',
-      'Complete recommended tests before your appointment if possible',
-      'Monitor your symptoms and note any changes',
-      'Report any worsening or new symptoms immediately',
+      'The scheduling desk is booking an oncology follow-up slot for you this week',
+      'You will receive an SMS with the date and time — reply to it to reschedule',
+      'Send a new check-in if anything changes before your visit',
     ];
   }
 
   return [
-    'Continue your regular follow-up schedule',
-    'Maintain a healthy lifestyle with balanced diet and light exercise',
-    'If symptoms persist beyond 2-3 weeks or worsen, report again',
-    'Keep all scheduled appointments',
+    'Your check-in is in the care team\'s standard weekly review queue',
+    'Your next scheduled follow-up stays as planned',
+    'Send a new check-in at any time if anything changes',
   ];
 }
 
-function collectSuggestedTests(symptoms: SymptomEntry[], urgency: UrgencyLevel): string[] {
-  const tests = new Set<string>();
-
-  for (const symptom of symptoms) {
-    const concern = CANCER_CONCERN_MAP[symptom.name];
-    if (concern) {
-      concern.suggestedTests.forEach(t => tests.add(t));
-    }
+function collectPrepSteps(priority: RoutingPriority, patient: Patient): string[] {
+  if (priority === 'emergency') {
+    return [
+      'Do not drive yourself — ask your caregiver to take you or call an ambulance',
+      'Take your treatment summary and medicine list if they are within reach',
+      `Share your emergency contact (${patient.emergencyContact.name}) with the hospital staff`,
+    ];
   }
 
-  // Always suggest basic blood work for non-routine
-  if (urgency !== 'routine') {
-    tests.add('Complete blood count');
+  if (priority === 'routine') {
+    return [
+      'No extra preparation needed right now',
+      'Keep logging check-ins so your care team sees the full picture at your next visit',
+    ];
   }
 
-  return Array.from(tests);
+  const steps = [
+    priority === 'urgent'
+      ? 'A nurse has been notified to schedule your follow-up — keep your phone nearby'
+      : 'Watch for an SMS confirming your appointment slot',
+    'Please ensure your caregiver is available to drive or accompany you',
+    'Bring your previous scan CDs and printed reports',
+    'Bring your current medicine list and hospital ID card',
+  ];
+
+  if (patient.distanceFromCenter > 50) {
+    steps.push(`You live about ${patient.distanceFromCenter} km from ${patient.treatmentCenter} — ask the coordinator about travel support or a teleconsult`);
+  }
+
+  return steps;
 }

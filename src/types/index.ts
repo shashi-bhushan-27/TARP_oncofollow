@@ -4,7 +4,33 @@
 
 export type UserRole = 'patient' | 'clinician' | 'admin' | 'caregiver';
 
-export type UrgencyLevel = 'routine' | 'soon' | 'urgent' | 'emergency';
+// Operational routing priority: decides which care-team queue a patient report
+// lands in. It is a workflow routing decision, not a clinical risk score, and a
+// care-team member can always override it.
+export type RoutingPriority = 'routine' | 'soon' | 'urgent' | 'emergency';
+
+export const ROUTING_PRIORITY_ACTIONS: Record<RoutingPriority, string> = {
+  routine: 'Added to standard weekly review queue',
+  soon: 'Auto-scheduling an oncology follow-up slot this week',
+  urgent: 'Triggering SMS alert to on-call oncology coordinator',
+  emergency: 'Paging on-call coordinator — please call emergency services now',
+};
+
+// Compact queue names for care-team lists, dashboards and filters
+export const ROUTING_PRIORITY_SHORT_LABELS: Record<RoutingPriority, string> = {
+  routine: 'Weekly review',
+  soon: 'Slot this week',
+  urgent: 'Coordinator SMS',
+  emergency: 'Emergency escalation',
+};
+
+// What the same routing means for the patient or caregiver, in plain words
+export const PATIENT_ROUTING_STATUS: Record<RoutingPriority, string> = {
+  routine: 'Care team will review this week',
+  soon: 'Visit being booked this week',
+  urgent: 'Care team will call you today',
+  emergency: 'Get emergency help now',
+};
 
 export type SymptomName =
   | 'cough' | 'breathlessness' | 'chest_pain' | 'fatigue'
@@ -68,6 +94,7 @@ export interface Patient {
   medications: Medication[];
   followUpSchedule: FollowUp[];
   consentGiven: boolean;
+  caregiverUserIds?: string[]; // family caregivers who can act on the patient's behalf
 }
 
 export interface TreatmentRecord {
@@ -152,14 +179,14 @@ export interface ReportChunk {
 }
 
 // =============================================
-// Triage & AI Assessment
+// Check-in Routing
 // =============================================
 
 export interface TriageResult {
-  urgencyLevel: UrgencyLevel;
+  routingPriority: RoutingPriority;
   explanation: string;
   recommendedActions: string[];
-  suggestedTests: string[];
+  prepSteps: string[]; // administrative preparation steps for the visit
   redFlagTriggers: string[];
   confidenceBand: 'low' | 'moderate' | 'high';
   citations: Citation[];
@@ -168,40 +195,12 @@ export interface TriageResult {
 
 export interface Citation {
   id: string;
-  label: string; // e.g. [R1], [G1]
-  sourceType: 'record' | 'guideline';
+  label: string; // e.g. [R1]
+  sourceType: 'record';
   sourceId: string;
   sourceTitle: string;
   snippet: string;
   date?: string;
-}
-
-export interface AIAssessment {
-  id: string;
-  patientId: string;
-  symptomReportId?: string;
-  query: string;
-  response: string;
-  urgencyLevel: UrgencyLevel;
-  explanation: string;
-  recommendedActions: string[];
-  suggestedTests: string[];
-  citations: Citation[];
-  redFlagTriggers: string[];
-  confidenceBand: 'low' | 'moderate' | 'high';
-  mode: AnswerMode;
-  createdAt: string;
-  retrievedDocuments: RetrievedDocument[];
-  reasoningSummary: string;
-}
-
-export interface RetrievedDocument {
-  id: string;
-  title: string;
-  type: 'record' | 'guideline';
-  date?: string;
-  relevanceScore: number;
-  snippet: string;
 }
 
 // =============================================
@@ -213,7 +212,7 @@ export interface Alert {
   patientId: string;
   patientName: string;
   type: AlertType;
-  severity: UrgencyLevel;
+  severity: RoutingPriority;
   message: string;
   details: string;
   isRead: boolean;
@@ -247,29 +246,29 @@ export interface TimelineEvent {
   title: string;
   description: string;
   date: string;
-  urgencyLevel?: UrgencyLevel;
+  urgencyLevel?: RoutingPriority;
   relatedId?: string;
   metadata?: Record<string, string>;
+  careTeamOnly?: boolean; // internal workflow events, hidden from patients and caregivers
 }
 
 // =============================================
-// Guidelines
+// Patient Notifications (patient/caregiver-facing)
+// Kept separate from care-team Alerts, which are an internal work queue.
 // =============================================
 
-export interface GuidelineDocument {
+export type PatientNotificationKind = 'check_in' | 'appointment' | 'report' | 'reminder';
+
+export interface PatientNotification {
   id: string;
+  patientId: string;
+  kind: PatientNotificationKind;
   title: string;
-  source: string;
-  category: string;
-  content: string;
-  version: string;
-}
-
-export interface GuidelineChunk {
-  id: string;
-  guidelineId: string;
-  content: string;
-  chunkIndex: number;
+  body: string;
+  createdAt: string;
+  isRead: boolean;
+  actionHref?: string;
+  actionLabel?: string;
 }
 
 // =============================================
@@ -301,9 +300,6 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
-  citations?: Citation[];
-  triageResult?: TriageResult;
-  retrievedDocuments?: RetrievedDocument[];
 }
 
 // =============================================
@@ -313,30 +309,29 @@ export interface ChatMessage {
 export interface SymptomDefinition {
   name: SymptomName;
   label: string;
-  icon: string;
   description: string;
   isRedFlag?: boolean;
 }
 
 export const SYMPTOM_DEFINITIONS: SymptomDefinition[] = [
-  { name: 'cough', label: 'Cough', icon: '🫁', description: 'Persistent or new cough' },
-  { name: 'breathlessness', label: 'Breathlessness', icon: '😮‍💨', description: 'Difficulty breathing or shortness of breath' },
-  { name: 'chest_pain', label: 'Chest Pain', icon: '💔', description: 'Pain or discomfort in chest area' },
-  { name: 'fatigue', label: 'Fatigue', icon: '😴', description: 'Unusual tiredness or exhaustion' },
-  { name: 'headache', label: 'Headache', icon: '🤕', description: 'Persistent or severe headache' },
-  { name: 'bone_pain', label: 'Bone Pain', icon: '🦴', description: 'Pain in bones, joints, or back' },
-  { name: 'nausea', label: 'Nausea', icon: '🤢', description: 'Feeling sick or vomiting' },
-  { name: 'fever', label: 'Fever', icon: '🌡️', description: 'Elevated temperature or chills' },
-  { name: 'swelling', label: 'Swelling', icon: '🔴', description: 'New swelling or lump' },
-  { name: 'appetite_loss', label: 'Appetite Loss', icon: '🍽️', description: 'Reduced appetite or eating' },
-  { name: 'weight_loss', label: 'Weight Loss', icon: '⚖️', description: 'Unexplained weight loss' },
-  { name: 'dizziness', label: 'Dizziness', icon: '💫', description: 'Lightheadedness or vertigo' },
-  { name: 'weakness', label: 'Weakness', icon: '🦾', description: 'Unusual muscle weakness' },
-  { name: 'vision_changes', label: 'Vision Changes', icon: '👁️', description: 'Blurred or changed vision' },
-  { name: 'confusion', label: 'Confusion', icon: '🧠', description: 'Mental confusion or disorientation', isRedFlag: true },
-  { name: 'seizures', label: 'Seizures', icon: '⚡', description: 'New onset seizures', isRedFlag: true },
-  { name: 'hemoptysis', label: 'Coughing Blood', icon: '🩸', description: 'Blood in cough or sputum', isRedFlag: true },
-  { name: 'skin_changes', label: 'Skin Changes', icon: '🩹', description: 'Rash, redness, or skin irregularities' },
-  { name: 'lymph_swelling', label: 'Lymph Node Swelling', icon: '⭕', description: 'Swollen lymph nodes' },
-  { name: 'numbness', label: 'Numbness/Tingling', icon: '✋', description: 'Numbness or tingling in extremities' },
+  { name: 'cough', label: 'Cough', description: 'Persistent or new cough' },
+  { name: 'breathlessness', label: 'Breathlessness', description: 'Difficulty breathing or shortness of breath' },
+  { name: 'chest_pain', label: 'Chest Pain', description: 'Pain or discomfort in chest area' },
+  { name: 'fatigue', label: 'Fatigue', description: 'Unusual tiredness or exhaustion' },
+  { name: 'headache', label: 'Headache', description: 'Persistent or severe headache' },
+  { name: 'bone_pain', label: 'Bone Pain', description: 'Pain in bones, joints, or back' },
+  { name: 'nausea', label: 'Nausea', description: 'Feeling sick or vomiting' },
+  { name: 'fever', label: 'Fever', description: 'Elevated temperature or chills' },
+  { name: 'swelling', label: 'Swelling', description: 'New swelling or lump' },
+  { name: 'appetite_loss', label: 'Appetite Loss', description: 'Reduced appetite or eating' },
+  { name: 'weight_loss', label: 'Weight Loss', description: 'Unexplained weight loss' },
+  { name: 'dizziness', label: 'Dizziness', description: 'Lightheadedness or vertigo' },
+  { name: 'weakness', label: 'Weakness', description: 'Unusual muscle weakness' },
+  { name: 'vision_changes', label: 'Vision Changes', description: 'Blurred or changed vision' },
+  { name: 'confusion', label: 'Confusion', description: 'Mental confusion or disorientation', isRedFlag: true },
+  { name: 'seizures', label: 'Seizures', description: 'New onset seizures', isRedFlag: true },
+  { name: 'hemoptysis', label: 'Coughing Blood', description: 'Blood in cough or sputum', isRedFlag: true },
+  { name: 'skin_changes', label: 'Skin Changes', description: 'Rash, redness, or skin irregularities' },
+  { name: 'lymph_swelling', label: 'Lymph Node Swelling', description: 'Swollen lymph nodes' },
+  { name: 'numbness', label: 'Numbness/Tingling', description: 'Numbness or tingling in extremities' },
 ];

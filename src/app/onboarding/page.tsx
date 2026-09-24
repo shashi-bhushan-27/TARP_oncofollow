@@ -62,7 +62,7 @@ export default function OnboardingPage() {
           </div>
           <div>
             <p className="font-bold text-foreground">OncoFollow</p>
-            <p className="text-2xs text-surface-400">Patient Registration</p>
+            <p className="text-2xs text-subtle">Patient Registration</p>
           </div>
         </div>
       </header>
@@ -75,7 +75,7 @@ export default function OnboardingPage() {
               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
                 i <= currentStep
                   ? 'bg-primary-600 text-white'
-                  : 'bg-surface-200 dark:bg-surface-700 text-surface-500'
+                  : 'bg-surface-200 dark:bg-surface-700 text-muted'
               }`}>
                 {i < currentStep ? <Check className="w-4 h-4" /> : i + 1}
               </div>
@@ -87,7 +87,7 @@ export default function OnboardingPage() {
             </div>
           ))}
         </div>
-        <p className="text-center text-sm font-medium text-surface-500">{steps[currentStep]}</p>
+        <p className="text-center text-sm font-medium text-muted">{steps[currentStep]}</p>
 
         {/* Step 1: Personal Info */}
         {currentStep === 0 && (
@@ -256,7 +256,7 @@ export default function OnboardingPage() {
                   checked={formData.consent}
                   onChange={e => update('consent', e.target.checked)}
                 />
-                <span className="text-sm text-surface-600 dark:text-surface-300 leading-relaxed">
+                <span className="text-sm text-muted leading-relaxed">
                   I consent to the collection and use of my health information for follow-up support through OncoFollow.
                   I understand this tool does not replace my doctor&apos;s diagnosis and is for support purposes only.
                 </span>
