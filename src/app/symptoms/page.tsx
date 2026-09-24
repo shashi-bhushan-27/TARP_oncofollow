@@ -1,42 +1,76 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Activity, ChevronRight, ChevronLeft, Mic, MicOff, Check,
-  AlertTriangle, Phone, Shield, ArrowRight
+  Phone, Shield, ClipboardList, LoaderCircle,
+  Languages, Paperclip, UserCheck
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
   SYMPTOM_DEFINITIONS, SymptomEntry, SymptomName, Severity, Frequency, Trend, TriageResult
 } from '@/types';
-import { demoPatients, getPatientByUserId } from '@/data/demoData';
+import { getPatientForUser } from '@/data/demoData';
 import { runTriage } from '@/lib/triage';
 import { scanForRedFlags, scanSymptomsForRedFlags } from '@/lib/safety';
+import { RoutingChip } from '@/components/RoutingChip';
+import { AshaCheckIn } from '@/components/asha/AshaCheckIn';
+import { AshaSummary } from '@/components/asha/AshaSummary';
+import { AshaLine } from '@/components/asha/types';
+import { AshaState, toCheckInForm } from '@/lib/asha/slots';
 
-function UrgencyChip({ level }: { level: string }) {
-  const classes: Record<string, string> = {
-    routine: 'chip-routine', soon: 'chip-soon', urgent: 'chip-urgent', emergency: 'chip-emergency',
-  };
-  const labels: Record<string, string> = {
-    routine: '● Routine Monitoring', soon: '● Contact Doctor Soon',
-    urgent: '● Urgent Oncology Review', emergency: '🚨 Seek Emergency Care Now',
-  };
-  return <span className={`${classes[level] || ''} text-sm`}>{labels[level] || level}</span>;
+// Sarvam's REST speech-to-text-translate endpoint accepts clips under 30 seconds
+const MAX_RECORDING_MS = 28_000;
+
+function pickRecorderMimeType(): string | undefined {
+  if (typeof MediaRecorder === 'undefined') return undefined;
+  return ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+    .find(type => MediaRecorder.isTypeSupported(type));
 }
 
 export default function SymptomsPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const patient = user ? getPatientByUserId(user.id) : demoPatients[0];
+  const patient = getPatientForUser(user);
   const [step, setStep] = useState(1);
   const [selectedSymptoms, setSelectedSymptoms] = useState<Set<SymptomName>>(new Set());
   const [symptomDetails, setSymptomDetails] = useState<Record<SymptomName, Partial<SymptomEntry>>>({} as Record<SymptomName, Partial<SymptomEntry>>);
   const [freeText, setFreeText] = useState('');
   const [associatedSymptoms, setAssociatedSymptoms] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [voiceError, setVoiceError] = useState('');
+  const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
   const [transcript, setTranscript] = useState('');
   const [triageResult, setTriageResult] = useState<TriageResult | null>(null);
   const [showEmergency, setShowEmergency] = useState(false);
+  // "Talk it through" with Asha is the default; the list-based form is the alternative
+  const [mode, setMode] = useState<'asha' | 'form'>('asha');
+  const [ashaResult, setAshaResult] = useState<{ state: AshaState; lines: AshaLine[]; flags: string[] } | null>(null);
+  const [ashaAttempt, setAshaAttempt] = useState(0);
+
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const autoStopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const releaseMicrophone = () => {
+    if (autoStopRef.current) clearTimeout(autoStopRef.current);
+    autoStopRef.current = null;
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+  };
+
+  // Stop the mic if the patient leaves the page mid-recording
+  useEffect(() => () => {
+    const recorder = recorderRef.current;
+    if (recorder?.state === 'recording') {
+      recorder.onstop = null;
+      recorder.stop();
+    }
+    if (autoStopRef.current) clearTimeout(autoStopRef.current);
+    streamRef.current?.getTracks().forEach(track => track.stop());
+  }, []);
 
   const toggleSymptom = (name: SymptomName) => {
     setSelectedSymptoms(prev => {
@@ -54,23 +88,86 @@ export default function SymptomsPage() {
     }));
   };
 
-  const handleVoiceToggle = () => {
-    if (isRecording) {
-      setIsRecording(false);
-      // Simulate transcript from voice
-      setTranscript('I have been feeling a persistent dry cough for about 3 weeks now. It seems to be getting worse. I also feel some discomfort in my chest when I cough hard. I am more tired than usual.');
-    } else {
-      setIsRecording(true);
-      setTranscript('');
+  const transcribe = async (audio: Blob) => {
+    setIsTranscribing(true);
+    try {
+      const extension = audio.type.includes('mp4') ? 'm4a' : audio.type.includes('ogg') ? 'ogg' : 'webm';
+      const form = new FormData();
+      form.append('file', audio, `voice-note.${extension}`);
+
+      const res = await fetch('/api/transcribe', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Transcription failed');
+      if (!data.transcript) throw new Error('We could not hear anything in that recording. Please try again closer to the microphone.');
+
+      setTranscript(prev => (prev ? `${prev} ${data.transcript}` : data.transcript));
+      setDetectedLanguage(data.languageCode);
+    } catch (err) {
+      setVoiceError(err instanceof Error ? err.message : 'Transcription failed. Please try again or type instead.');
+    } finally {
+      setIsTranscribing(false);
     }
   };
 
-  const handleSubmit = () => {
+  const startRecording = async () => {
+    setVoiceError('');
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setVoiceError('Voice recording is not supported in this browser. Please type your symptoms instead.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mimeType = pickRecorderMimeType();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      chunksRef.current = [];
+
+      recorder.ondataavailable = e => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        releaseMicrophone();
+        setIsRecording(false);
+        // Sarvam accepts "audio/webm" but rejects "audio/webm;codecs=opus", so drop the codec part
+        const audio = new Blob(chunksRef.current, { type: recorder.mimeType.split(';')[0] || 'audio/webm' });
+        chunksRef.current = [];
+        if (audio.size > 0) transcribe(audio);
+      };
+
+      recorderRef.current = recorder;
+      recorder.start();
+      setIsRecording(true);
+      autoStopRef.current = setTimeout(() => {
+        if (recorder.state === 'recording') recorder.stop();
+      }, MAX_RECORDING_MS);
+    } catch (err) {
+      releaseMicrophone();
+      const denied = err instanceof DOMException && err.name === 'NotAllowedError';
+      setVoiceError(denied
+        ? 'Microphone access was blocked. Please allow microphone access in your browser settings, or type instead.'
+        : 'Could not start the microphone. Please check it is connected, or type instead.');
+    }
+  };
+
+  const handleVoiceToggle = () => {
+    if (isTranscribing) return;
+    if (isRecording) recorderRef.current?.stop();
+    else startRecording();
+  };
+
+  const submitCheckIn = (input = {
+    selected: selectedSymptoms,
+    details: symptomDetails,
+    free: freeText,
+    associated: associatedSymptoms,
+    spoken: transcript,
+  }) => {
     if (!patient) return;
 
-    const symptoms: SymptomEntry[] = Array.from(selectedSymptoms).map(name => {
+    const symptoms: SymptomEntry[] = Array.from(input.selected).map(name => {
       const def = SYMPTOM_DEFINITIONS.find(d => d.name === name);
-      const details = symptomDetails[name] || {};
+      const details = input.details[name] || {};
       return {
         name,
         label: def?.label || name,
@@ -81,7 +178,7 @@ export default function SymptomsPage() {
       };
     });
 
-    const allText = `${freeText} ${associatedSymptoms} ${transcript}`;
+    const allText = `${input.free} ${input.associated} ${input.spoken}`;
 
     // Check for emergency red flags first
     const textFlags = scanForRedFlags(allText);
@@ -94,8 +191,8 @@ export default function SymptomsPage() {
     // Run triage
     const result = runTriage({
       symptoms,
-      freeText: freeText || transcript,
-      associatedSymptoms,
+      freeText: [input.free, input.spoken].filter(Boolean).join(' '),
+      associatedSymptoms: input.associated,
       patient,
       recentDocuments: [],
     });
@@ -104,166 +201,268 @@ export default function SymptomsPage() {
     setStep(4); // Show results
   };
 
+  const handleSubmit = () => submitCheckIn();
+
+  // Asha's findings go through exactly the same submit and routing as the form
+  const submitFromAsha = (state: AshaState, lines: AshaLine[], extraText = '') => {
+    const form = toCheckInForm(state);
+    setSelectedSymptoms(form.selected);
+    setSymptomDetails(form.details);
+    submitCheckIn({
+      selected: form.selected,
+      details: form.details,
+      free: [form.notes, extraText].filter(Boolean).join(' '),
+      associated: form.associated,
+      spoken: lines.filter(l => l.who === 'person').map(l => l.text).join(' '),
+    });
+  };
+
+  const ashaCallbacks = {
+    onFinished: (state: AshaState, lines: AshaLine[], flags: string[]) => setAshaResult({ state, lines, flags }),
+    onEmergency: (said: string, state: AshaState, lines: AshaLine[]) => {
+      submitFromAsha(state, lines, said);
+      setShowEmergency(true);
+    },
+  };
+  const isCaregiver = user?.role === 'caregiver';
+  const patientFirstName = patient?.user.name.split(' ')[0] ?? '';
+
   // Emergency Overlay
   if (showEmergency) {
     return (
-      <div className="emergency-overlay animate-fade-in">
-        <div className="max-w-lg mx-auto p-6 text-center">
-          <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center mx-auto mb-6 animate-emergency-pulse">
-            <Phone className="w-10 h-10 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-white mb-4">
-            Emergency Symptoms Detected
-          </h1>
-          <p className="text-emergency-100 text-lg mb-6 leading-relaxed">
-            Your symptoms include indicators that require <strong>immediate emergency evaluation</strong>.
-            Please go to the nearest emergency department or call emergency services now.
+      <div className="emergency-overlay animate-fade-in" role="alertdialog" aria-labelledby="emergency-title">
+        <div className="max-w-lg w-full mx-auto p-6 sm:p-8 text-white">
+          <span className="w-12 h-12 rounded-lg bg-white/15 flex items-center justify-center mb-6">
+            <Phone className="w-6 h-6" />
+          </span>
+          <h1 id="emergency-title" className="font-display text-3xl sm:text-4xl mb-4">Please get help now</h1>
+          <p className="text-lg text-emergency-50 leading-relaxed mb-6">
+            Your check-in mentions something on our emergency list, so we have <strong className="font-semibold text-white">paged the on-call oncology coordinator</strong>.
+            Don&apos;t wait for their call.
           </p>
-          <div className="space-y-3 mb-8 text-left">
-            <div className="p-4 rounded-xl bg-white/10 text-white">
-              <p className="font-semibold mb-1">Do NOT delay — act now:</p>
-              <ul className="text-sm space-y-1 text-emergency-100">
-                <li>• Call your local emergency number</li>
-                <li>• Or go to the nearest emergency department</li>
-                <li>• Bring your cancer treatment records if available</li>
-                <li>• Tell the ER about your breast cancer history</li>
-              </ul>
-            </div>
-          </div>
-          <div className="space-y-3">
-            <button
-              onClick={() => setShowEmergency(false)}
-              className="w-full py-3 rounded-xl bg-white text-emergency-700 font-semibold hover:bg-emergency-50 transition-colors"
-            >
-              I understand — view assessment details
-            </button>
-          </div>
-          <p className="text-emergency-200 text-xs mt-6">
-            ⚕️ This tool is for follow-up support and does not replace a doctor&apos;s diagnosis.
+          <ol className="space-y-3 mb-8">
+            {[
+              'Call your local emergency number',
+              'Or go to the nearest emergency department',
+              'Bring your cancer treatment records if you can',
+              'Tell the emergency team about your cancer treatment',
+            ].map((item, i) => (
+              <li key={item} className="flex gap-3 items-baseline">
+                <span className="w-6 h-6 rounded bg-white/15 text-sm font-semibold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                <span className="text-base">{item}</span>
+              </li>
+            ))}
+          </ol>
+          <button
+            onClick={() => setShowEmergency(false)}
+            className="w-full min-h-touch rounded-lg bg-white text-emergency-800 font-semibold hover:bg-emergency-50 transition-colors"
+          >
+            I understand — show what was sent
+          </button>
+          <p className="text-emergency-100 text-xs mt-6">
+            OncoFollow supports follow-up care and does not replace your doctor.
           </p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Symptom Check-in</h1>
-        <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
-          {step < 4 ? `Step ${step} of 3` : 'Your Assessment'}
-        </p>
-      </div>
+  const steps = ['What you noticed', 'A few details', 'In your own words'];
 
-      {/* Progress Bar */}
-      {step < 4 && (
-        <div className="flex gap-2">
-          {[1, 2, 3].map(s => (
-            <div key={s} className={`h-1.5 flex-1 rounded-full transition-colors ${
-              s <= step ? 'bg-primary-500' : 'bg-surface-200 dark:bg-surface-700'
-            }`} />
-          ))}
-        </div>
+  return (
+    <div className="max-w-3xl space-y-8 animate-fade-in">
+      {/* Header */}
+      <header>
+        <p className="eyebrow mb-2">{step < 4 ? 'Check-in' : 'Check-in sent'}</p>
+        <h1 className="page-title">
+          {step < 4 ? 'Tell your care team how you are' : 'Your care team has your check-in'}
+        </h1>
+      </header>
+
+      {/* Stepper (list-based form) */}
+      {step < 4 && mode === 'form' && (
+        <ol className="grid grid-cols-3 gap-2" aria-label="Progress">
+          {steps.map((label, i) => {
+            const n = i + 1;
+            const state = n < step ? 'done' : n === step ? 'current' : 'todo';
+            return (
+              <li key={label} aria-current={state === 'current' ? 'step' : undefined}>
+                <div className={`h-1 rounded-sm mb-2 ${state === 'todo' ? 'bg-plane' : 'bg-primary-600 dark:bg-primary-300'}`} />
+                <p className={`text-xs ${state === 'current' ? 'text-foreground font-semibold' : 'text-subtle'}`}>
+                  <span className="tabular-nums">{n}.</span> {label}
+                </p>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
+      {/* Step 1 (default): talk it through with Asha */}
+      {step === 1 && mode === 'asha' && user && (
+        ashaResult ? (
+          <AshaSummary
+            state={ashaResult.state}
+            lines={ashaResult.lines}
+            onChange={state => setAshaResult({ ...ashaResult, state })}
+            onConfirm={() => submitFromAsha(ashaResult.state, ashaResult.lines)}
+            onTalkAgain={() => { setAshaResult(null); setAshaAttempt(n => n + 1); }}
+            isCaregiver={isCaregiver}
+            patientFirstName={patientFirstName}
+          />
+        ) : (
+          <AshaCheckIn
+            key={ashaAttempt}
+            userId={user.id}
+            isCaregiver={isCaregiver}
+            patientFirstName={patientFirstName}
+            callbacks={ashaCallbacks}
+            onUseForm={() => setMode('form')}
+          />
+        )
       )}
 
       {/* Step 1: Select Symptoms */}
-      {step === 1 && (
+      {step === 1 && mode === 'form' && (
         <div className="space-y-6">
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold text-foreground mb-1">What symptoms are you experiencing?</h2>
-            <p className="text-sm text-surface-400 mb-4">Select all that apply</p>
+          <button onClick={() => setMode('asha')} className="btn-ghost -ml-3">
+            <ChevronLeft className="w-4 h-4" /> Talk it through with Asha instead
+          </button>
+          <section className="card p-6 sm:p-8" aria-labelledby="pick">
+            <h2 id="pick" className="section-title !font-sans">What have you noticed?</h2>
+            <p className="text-sm text-muted mt-1 mb-5">Choose everything that applies. You can also describe it by voice below.</p>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div className="grid sm:grid-cols-2 gap-2">
               {SYMPTOM_DEFINITIONS.map(def => {
                 const selected = selectedSymptoms.has(def.name);
                 return (
                   <button
                     key={def.name}
                     onClick={() => toggleSymptom(def.name)}
-                    className={`p-3 rounded-xl border text-left transition-all min-h-touch ${
+                    aria-pressed={selected}
+                    className={`flex items-start gap-3 p-3 rounded-lg text-left min-h-touch transition-colors duration-150 ${
                       selected
                         ? def.isRedFlag
-                          ? 'bg-emergency-50 dark:bg-emergency-950 border-emergency-300 dark:border-emergency-700 ring-2 ring-emergency-300'
-                          : 'bg-primary-50 dark:bg-primary-950 border-primary-300 dark:border-primary-700 ring-2 ring-primary-300'
-                        : 'bg-[var(--card-bg)] border-[var(--card-border)] hover:bg-[var(--hover-bg)]'
+                          ? 'bg-emergency-50 dark:bg-emergency-950 ring-1 ring-emergency-600 dark:ring-emergency-400'
+                          : 'bg-primary-50 dark:bg-primary-950 ring-1 ring-primary-600 dark:ring-primary-300'
+                        : 'bg-plane hover:bg-[var(--plane-strong)]'
                     }`}
                     id={`symptom-${def.name}`}
                   >
-                    <span className="text-lg">{def.icon}</span>
-                    <p className={`text-sm font-medium mt-1 ${selected ? 'text-foreground' : 'text-surface-600 dark:text-surface-400'}`}>
-                      {def.label}
-                    </p>
-                    {def.isRedFlag && selected && (
-                      <p className="text-2xs text-emergency-600 dark:text-emergency-400 mt-0.5 font-medium">⚠ Red flag</p>
-                    )}
+                    <span
+                      className={`mt-0.5 w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${
+                        selected
+                          ? def.isRedFlag ? 'bg-emergency-600 text-white' : 'bg-primary-600 text-white dark:bg-primary-300 dark:text-surface-950'
+                          : 'bg-[var(--card-bg)] ring-1 ring-[var(--input-border)]'
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {selected && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-foreground">{def.label}</span>
+                      <span className="block text-xs text-muted mt-0.5">{def.description}</span>
+                      {def.isRedFlag && selected && (
+                        <span className="block text-xs font-medium text-emergency-700 dark:text-emergency-300 mt-1">
+                          This alerts the on-call team straight away
+                        </span>
+                      )}
+                    </span>
                   </button>
                 );
               })}
             </div>
-          </div>
+          </section>
 
           {/* Voice Recording */}
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold text-foreground mb-1">Or describe by voice</h2>
-            <p className="text-sm text-surface-400 mb-4">Press and hold to record</p>
-            <div className="flex items-center gap-4">
+          <section className="card p-6 sm:p-8" aria-labelledby="voice">
+            <h2 id="voice" className="section-title !font-sans">Or say it in your own words</h2>
+            <p className="text-sm text-muted mt-1 mb-5 flex items-center gap-1.5">
+              <Languages className="w-4 h-4 flex-shrink-0" />
+              Hindi, English or any major Indian language · up to 30 seconds per note
+            </p>
+            <div className="flex items-start gap-4">
               <button
                 onClick={handleVoiceToggle}
-                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
+                disabled={isTranscribing}
+                aria-label={isRecording ? 'Stop recording' : 'Start recording'}
+                className={`w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0 transition-colors duration-150 disabled:opacity-60 ${
                   isRecording
-                    ? 'bg-emergency-500 text-white animate-pulse-soft'
-                    : 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400 hover:bg-primary-200'
+                    ? 'bg-emergency-600 text-white'
+                    : 'bg-primary-600 text-white hover:bg-primary-700 dark:bg-primary-300 dark:text-surface-950'
                 }`}
               >
-                {isRecording ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                {isTranscribing ? <LoaderCircle className="w-6 h-6 animate-spin" />
+                  : isRecording ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
               </button>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0 pt-1" aria-live="polite">
                 {isRecording ? (
-                  <p className="text-sm text-emergency-600 font-medium">Recording... tap to stop</p>
+                  <p className="text-sm font-medium text-emergency-700 dark:text-emergency-300 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emergency-600" aria-hidden="true" />
+                    Recording — tap the button again to stop
+                  </p>
+                ) : isTranscribing ? (
+                  <div className="space-y-2" aria-label="Transcribing">
+                    <p className="text-sm text-muted">Turning your voice note into English text…</p>
+                    <div className="skeleton h-3 w-4/5" />
+                    <div className="skeleton h-3 w-3/5" />
+                  </div>
                 ) : transcript ? (
-                  <div className="p-3 rounded-xl bg-surface-50 dark:bg-surface-800">
+                  <div className="p-4 rounded-lg bg-plane">
                     <p className="text-sm text-foreground">{transcript}</p>
-                    <p className="text-2xs text-surface-400 mt-1">Transcript — you can edit this</p>
+                    <p className="text-xs text-subtle mt-2">
+                      English transcript{detectedLanguage ? ` · spoken in ${detectedLanguage}` : ''} · you can edit it in step 3, or record again to add more
+                    </p>
                   </div>
                 ) : (
-                  <p className="text-sm text-surface-400">Tap the microphone to start recording</p>
+                  <p className="text-sm text-muted">Tap the microphone and speak. Tap again when you are done.</p>
+                )}
+                {voiceError && (
+                  <p className="text-sm text-emergency-700 dark:text-emergency-300 mt-2" role="alert">{voiceError}</p>
                 )}
               </div>
             </div>
-          </div>
+          </section>
 
-          <button
-            onClick={() => setStep(2)}
-            disabled={selectedSymptoms.size === 0 && !transcript}
-            className="btn-primary w-full gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Continue <ChevronRight className="w-4 h-4" />
-          </button>
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-subtle" aria-live="polite">
+              {selectedSymptoms.size > 0 ? `${selectedSymptoms.size} selected` : transcript ? 'Voice note added' : 'Nothing selected yet'}
+            </p>
+            <button
+              onClick={() => setStep(2)}
+              disabled={(selectedSymptoms.size === 0 && !transcript) || isRecording || isTranscribing}
+              className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Continue <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 
       {/* Step 2: Details */}
       {step === 2 && (
-        <div className="space-y-4">
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Tell us more about each symptom</h2>
-
-            <div className="space-y-6">
+        <div className="space-y-6">
+          <section className="card" aria-labelledby="details">
+            <div className="p-6 sm:px-8 sm:pt-8 sm:pb-2">
+              <h2 id="details" className="section-title !font-sans">A few details about each one</h2>
+              <p className="text-sm text-muted mt-1">If you are not sure, leave it — your care team will ask.</p>
+            </div>
+            {selectedSymptoms.size === 0 && (
+              <p className="px-6 sm:px-8 pb-8 pt-4 text-sm text-muted">You described things by voice, so there is nothing to add here. Continue to the next step.</p>
+            )}
+            <div className="divide-y divide-[var(--card-border)]">
               {Array.from(selectedSymptoms).map(name => {
                 const def = SYMPTOM_DEFINITIONS.find(d => d.name === name);
                 const details = symptomDetails[name] || {};
                 return (
-                  <div key={name} className="p-4 rounded-xl bg-surface-50 dark:bg-surface-800 space-y-3">
-                    <p className="font-medium text-foreground flex items-center gap-2">
-                      <span>{def?.icon}</span> {def?.label}
-                    </p>
-
-                    <div className="grid grid-cols-2 gap-3">
+                  <fieldset key={name} className="p-6 sm:px-8">
+                    <legend className="sr-only">{def?.label}</legend>
+                    <p className="font-medium text-foreground mb-4" aria-hidden="true">{def?.label}</p>
+                    <div className="grid sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="label">Severity</label>
+                        <label className="label" htmlFor={`${name}-severity`}>How strong is it?</label>
                         <select
-                          className="input-field text-sm"
+                          id={`${name}-severity`}
+                          className="input-field"
                           value={details.severity || ''}
                           onChange={e => updateDetail(name, 'severity', e.target.value)}
                         >
@@ -274,59 +473,62 @@ export default function SymptomsPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="label">Duration</label>
+                        <label className="label" htmlFor={`${name}-duration`}>For how long?</label>
                         <select
-                          className="input-field text-sm"
+                          id={`${name}-duration`}
+                          className="input-field"
                           value={details.duration || ''}
                           onChange={e => updateDetail(name, 'duration', e.target.value)}
                         >
                           <option value="">Select</option>
                           <option value="1-2 days">1–2 days</option>
                           <option value="3-5 days">3–5 days</option>
-                          <option value="1 week">~1 week</option>
-                          <option value="2 weeks">~2 weeks</option>
-                          <option value="3 weeks">~3 weeks</option>
-                          <option value="1 month+">1 month+</option>
+                          <option value="1 week">About 1 week</option>
+                          <option value="2 weeks">About 2 weeks</option>
+                          <option value="3 weeks">About 3 weeks</option>
+                          <option value="1 month+">A month or more</option>
                         </select>
                       </div>
                       <div>
-                        <label className="label">How often?</label>
+                        <label className="label" htmlFor={`${name}-frequency`}>How often?</label>
                         <select
-                          className="input-field text-sm"
+                          id={`${name}-frequency`}
+                          className="input-field"
                           value={details.frequency || ''}
                           onChange={e => updateDetail(name, 'frequency', e.target.value)}
                         >
                           <option value="">Select</option>
-                          <option value="occasional">Occasional</option>
-                          <option value="frequent">Frequent</option>
-                          <option value="constant">Constant</option>
+                          <option value="occasional">Now and then</option>
+                          <option value="frequent">Often</option>
+                          <option value="constant">All the time</option>
                         </select>
                       </div>
                       <div>
-                        <label className="label">Getting better or worse?</label>
+                        <label className="label" htmlFor={`${name}-trend`}>Getting better or worse?</label>
                         <select
-                          className="input-field text-sm"
+                          id={`${name}-trend`}
+                          className="input-field"
                           value={details.trend || ''}
                           onChange={e => updateDetail(name, 'trend', e.target.value)}
                         >
                           <option value="">Select</option>
-                          <option value="improving">Improving</option>
+                          <option value="improving">Getting better</option>
                           <option value="stable">About the same</option>
                           <option value="worsening">Getting worse</option>
                         </select>
                       </div>
                     </div>
-                  </div>
+                  </fieldset>
                 );
               })}
             </div>
-          </div>
+          </section>
 
-          <div className="flex gap-3">
-            <button onClick={() => setStep(1)} className="btn-secondary flex-1 gap-2">
+          <div className="flex justify-between gap-3">
+            <button onClick={() => setStep(1)} className="btn-ghost">
               <ChevronLeft className="w-4 h-4" /> Back
             </button>
-            <button onClick={() => setStep(3)} className="btn-primary flex-1 gap-2">
+            <button onClick={() => setStep(3)} className="btn-primary">
               Continue <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -335,26 +537,31 @@ export default function SymptomsPage() {
 
       {/* Step 3: Additional Info */}
       {step === 3 && (
-        <div className="space-y-4">
-          <div className="card p-6 space-y-4">
-            <h2 className="text-lg font-semibold text-foreground">Anything else you want to share?</h2>
+        <div className="space-y-6">
+          <section className="card p-6 sm:p-8 space-y-5" aria-labelledby="words">
+            <div>
+              <h2 id="words" className="section-title !font-sans">Anything else your care team should know?</h2>
+              <p className="text-sm text-muted mt-1">All optional.</p>
+            </div>
 
             <div>
-              <label className="label">Describe how you feel in your own words (optional)</label>
+              <label className="label" htmlFor="free-text">In your own words</label>
               <textarea
+                id="free-text"
                 className="input-field min-h-[120px] resize-y"
-                placeholder="e.g., I have had a dry cough for about 3 weeks..."
+                placeholder="For example: I have had a dry cough for about 3 weeks…"
                 value={freeText}
                 onChange={e => setFreeText(e.target.value)}
               />
             </div>
 
             <div>
-              <label className="label">Any other symptoms not listed?</label>
+              <label className="label" htmlFor="other">Anything not on the list?</label>
               <input
+                id="other"
                 type="text"
                 className="input-field"
-                placeholder="e.g., night sweats, mild breathlessness on exertion"
+                placeholder="For example: night sweats"
                 value={associatedSymptoms}
                 onChange={e => setAssociatedSymptoms(e.target.value)}
               />
@@ -362,22 +569,23 @@ export default function SymptomsPage() {
 
             {transcript && (
               <div>
-                <label className="label">Voice transcript</label>
+                <label className="label" htmlFor="transcript">Your voice note (English text)</label>
                 <textarea
-                  className="input-field min-h-[80px] resize-y text-sm"
+                  id="transcript"
+                  className="input-field min-h-[80px] resize-y"
                   value={transcript}
                   onChange={e => setTranscript(e.target.value)}
                 />
               </div>
             )}
-          </div>
+          </section>
 
-          <div className="flex gap-3">
-            <button onClick={() => setStep(2)} className="btn-secondary flex-1 gap-2">
+          <div className="flex justify-between gap-3">
+            <button onClick={() => setStep(2)} className="btn-ghost">
               <ChevronLeft className="w-4 h-4" /> Back
             </button>
-            <button onClick={handleSubmit} className="btn-primary flex-1 gap-2">
-              <Check className="w-4 h-4" /> Submit Report
+            <button onClick={handleSubmit} className="btn-primary">
+              <Check className="w-4 h-4" /> Send to my care team
             </button>
           </div>
         </div>
@@ -385,101 +593,79 @@ export default function SymptomsPage() {
 
       {/* Step 4: Results */}
       {step === 4 && triageResult && (
-        <div className="space-y-4 animate-slide-up">
-          {/* Urgency Banner */}
-          <div className={`p-6 rounded-2xl border ${
-            triageResult.urgencyLevel === 'emergency' ? 'bg-emergency-50 dark:bg-emergency-950/50 border-emergency-200 dark:border-emergency-800' :
-            triageResult.urgencyLevel === 'urgent' ? 'bg-urgent-50 dark:bg-urgent-950/50 border-urgent-200 dark:border-urgent-800' :
-            triageResult.urgencyLevel === 'soon' ? 'bg-caution-50 dark:bg-caution-950/50 border-caution-200 dark:border-caution-800' :
-            'bg-primary-50 dark:bg-primary-950/50 border-primary-200 dark:border-primary-800'
-          }`}>
-            <UrgencyChip level={triageResult.urgencyLevel} />
-            <p className="mt-3 text-sm text-foreground leading-relaxed">{triageResult.explanation}</p>
+        <div className="space-y-6 animate-slide-up">
+          {/* Where it went */}
+          <section className="card p-6 sm:p-8" aria-labelledby="routed">
+            <p id="routed" className="eyebrow mb-3">Where your check-in went</p>
+            <RoutingChip priority={triageResult.routingPriority} full className="text-sm !py-1" />
+            <p className="mt-4 text-foreground leading-relaxed max-w-prose">{triageResult.explanation}</p>
+            <p className="mt-5 pt-4 border-t border-[var(--card-border)] text-sm text-muted flex items-start gap-2">
+              <UserCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              A member of your care team reviews every check-in and can change where it goes. This is not a medical assessment.
+            </p>
+          </section>
+
+          {/* Visit Preparation & Next Steps
+              (escalation triggers are kept for the care team's audit trail, not shown here) */}
+          <div className="grid md:grid-cols-2 gap-6">
+            <section className="card p-6" aria-labelledby="next">
+              <h2 id="next" className="section-title !font-sans mb-4">What happens next</h2>
+              <ol className="space-y-3">
+                {triageResult.recommendedActions.map((action, i) => (
+                  <li key={i} className="flex gap-3 text-sm text-foreground">
+                    <span className="w-6 h-6 rounded bg-plane text-xs font-semibold text-muted flex items-center justify-center flex-shrink-0 tabular-nums">{i + 1}</span>
+                    <span className="pt-0.5">{action}</span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+
+            {triageResult.prepSteps.length > 0 && (
+              <section className="card p-6" aria-labelledby="prep">
+                <h2 id="prep" className="section-title !font-sans mb-4">Before your visit</h2>
+                <ul className="space-y-3">
+                  {triageResult.prepSteps.map((prep, i) => (
+                    <li key={i} className="flex gap-3 text-sm text-foreground">
+                      <ClipboardList className="w-4 h-4 text-primary-600 dark:text-primary-300 flex-shrink-0 mt-0.5" />
+                      {prep}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
 
-          {/* Red Flags */}
-          {triageResult.redFlagTriggers.length > 0 && (
-            <div className="p-4 rounded-xl bg-emergency-50 dark:bg-emergency-950/50 border border-emergency-200 dark:border-emergency-800">
-              <p className="font-semibold text-emergency-800 dark:text-emergency-200 text-sm flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" /> Red Flags Detected
-              </p>
-              <ul className="mt-2 space-y-1">
-                {triageResult.redFlagTriggers.map((flag, i) => (
-                  <li key={i} className="text-sm text-emergency-700 dark:text-emergency-300">• {flag}</li>
+          {/* Records attached to the care-team alert */}
+          {triageResult.citations.length > 0 && (
+            <section className="card p-6" aria-labelledby="attached">
+              <h2 id="attached" className="section-title !font-sans mb-4 flex items-center gap-2">
+                <Paperclip className="w-4 h-4" /> Sent with your check-in
+              </h2>
+              <ul className="divide-y divide-[var(--card-border)]">
+                {triageResult.citations.map(citation => (
+                  <li key={citation.id} className="py-3 first:pt-0 last:pb-0 flex items-baseline gap-3">
+                    <span className="citation-badge">{citation.label}</span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">{citation.sourceTitle}</p>
+                      <p className="text-xs text-muted">{citation.snippet}</p>
+                    </div>
+                  </li>
                 ))}
               </ul>
-            </div>
+            </section>
           )}
 
-          {/* Recommended Actions */}
-          <div className="card p-6">
-            <h3 className="font-semibold text-foreground mb-3">Recommended Next Steps</h3>
-            <ul className="space-y-2">
-              {triageResult.recommendedActions.map((action, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-foreground">
-                  <ArrowRight className="w-4 h-4 text-primary-600 flex-shrink-0 mt-0.5" />
-                  {action}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <p className="text-xs text-subtle flex items-start gap-2">
+            <Shield className="w-4 h-4 flex-shrink-0" />
+            {triageResult.disclaimer}
+          </p>
 
-          {/* Suggested Tests */}
-          {triageResult.suggestedTests.length > 0 && (
-            <div className="card p-6">
-              <h3 className="font-semibold text-foreground mb-3">Suggested Tests to Discuss with Your Doctor</h3>
-              <div className="flex flex-wrap gap-2">
-                {triageResult.suggestedTests.map((test, i) => (
-                  <span key={i} className="px-3 py-1.5 rounded-lg bg-surface-100 dark:bg-surface-800 text-sm text-foreground border border-[var(--card-border)]">
-                    {test}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Citations */}
-          {triageResult.citations.length > 0 && (
-            <div className="card p-6">
-              <h3 className="font-semibold text-foreground mb-3">Evidence Sources</h3>
-              <div className="space-y-3">
-                {triageResult.citations.map(citation => (
-                  <div key={citation.id} className="evidence-card">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="citation-badge">{citation.label}</span>
-                      <span className="text-xs font-medium text-foreground">{citation.sourceTitle}</span>
-                    </div>
-                    <p className="text-xs text-surface-500 dark:text-surface-400 leading-relaxed">{citation.snippet}</p>
-                    {citation.date && (
-                      <p className="text-2xs text-surface-400 mt-1">{citation.date}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Disclaimer */}
-          <div className="p-4 rounded-xl bg-surface-50 dark:bg-surface-800 border border-[var(--card-border)]">
-            <p className="text-xs text-surface-500 dark:text-surface-400 flex items-start gap-2">
-              <Shield className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              {triageResult.disclaimer}
-            </p>
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-3">
-            <button
-              onClick={() => router.push('/assistant')}
-              className="btn-primary flex-1 gap-2"
-            >
-              <Activity className="w-4 h-4" /> Ask AI Assistant
+          <div className="flex flex-wrap gap-3">
+            <button onClick={() => router.push('/dashboard/patient')} className="btn-primary">
+              Back to overview
             </button>
-            <button
-              onClick={() => router.push('/dashboard/patient')}
-              className="btn-secondary flex-1 gap-2"
-            >
-              Back to Dashboard
+            <button onClick={() => router.push('/assistant')} className="btn-secondary">
+              <Activity className="w-4 h-4" /> Get ready with the care companion
             </button>
           </div>
         </div>

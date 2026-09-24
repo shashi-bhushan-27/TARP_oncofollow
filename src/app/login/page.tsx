@@ -1,9 +1,23 @@
 'use client';
 import React, { Suspense } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Heart, User, Stethoscope, Settings, Users } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { demoUsers } from '@/data/demoData';
+import { demoUsers, getPatientForUser } from '@/data/demoData';
+import { User, UserRole } from '@/types';
+import { Wordmark } from '@/components/Wordmark';
+
+const GROUPS: { roles: UserRole[]; heading: string; hint: string }[] = [
+  { roles: ['patient'], heading: 'Patients', hint: 'Check in, upload reports and see updates' },
+  { roles: ['caregiver'], heading: 'Caregivers', hint: 'Act on behalf of a family member' },
+  { roles: ['clinician'], heading: 'Care team', hint: 'Work the alerts queue and prepare visits' },
+  { roles: ['admin'], heading: 'Administration', hint: 'Users, audit log and settings' },
+];
+
+function initials(name: string) {
+  return name.replace(/^Dr\.\s*/, '').split(' ').map(p => p[0]).slice(0, 2).join('');
+}
 
 function LoginContent() {
   const router = useRouter();
@@ -20,120 +34,75 @@ function LoginContent() {
     else if (user?.role === 'caregiver') router.push('/dashboard/patient');
   };
 
-  const roleIcon = (role: string) => {
-    switch (role) {
-      case 'patient': return <User className="w-5 h-5" />;
-      case 'clinician': return <Stethoscope className="w-5 h-5" />;
-      case 'admin': return <Settings className="w-5 h-5" />;
-      case 'caregiver': return <Users className="w-5 h-5" />;
-      default: return <User className="w-5 h-5" />;
+  // Put the audience the visitor came for first; patients and caregivers travel together
+  const preferred: UserRole[] = suggestedRole === 'patient' ? ['patient', 'caregiver']
+    : suggestedRole === 'clinician' ? ['clinician'] : [];
+  const ordered = [
+    ...GROUPS.filter(g => g.roles.some(r => preferred.includes(r))),
+    ...GROUPS.filter(g => !g.roles.some(r => preferred.includes(r))),
+  ];
+
+  const describe = (user: User) => {
+    if (user.role === 'caregiver') {
+      const p = getPatientForUser(user);
+      return p ? `Caring for ${p.user.name}` : user.email;
     }
+    return user.email;
   };
-
-  const roleBadgeColor = (role: string) => {
-    switch (role) {
-      case 'patient': return 'bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300';
-      case 'clinician': return 'bg-accent-50 text-accent-700 dark:bg-accent-950 dark:text-accent-300';
-      case 'admin': return 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300';
-      case 'caregiver': return 'bg-caution-50 text-caution-700 dark:bg-caution-950 dark:text-caution-300';
-      default: return '';
-    }
-  };
-
-  const filteredUsers = suggestedRole
-    ? demoUsers.filter(u => u.role === suggestedRole)
-    : demoUsers;
-
-  const otherUsers = suggestedRole
-    ? demoUsers.filter(u => u.role !== suggestedRole)
-    : [];
 
   return (
-    <div className="w-full max-w-md">
-      {/* Logo */}
-      <div className="text-center mb-8">
-        <div className="w-14 h-14 rounded-2xl bg-primary-600 flex items-center justify-center mx-auto mb-4">
-          <Heart className="w-7 h-7 text-white" />
-        </div>
-        <h1 className="text-2xl font-bold text-foreground">Sign in to OncoFollow</h1>
-        <p className="text-sm text-surface-500 dark:text-surface-400 mt-2">
-          Select a demo account to explore the platform
-        </p>
+    <div className="w-full max-w-lg">
+      <Link href="/" className="inline-block mb-10"><Wordmark /></Link>
+      <h1 className="page-title">Sign in</h1>
+      <p className="text-muted mt-2 mb-8">Choose a demo account. All patient data here is simulated.</p>
+
+      <div className="space-y-8">
+        {ordered.map(group => {
+          const users = demoUsers.filter(u => group.roles.includes(u.role));
+          if (users.length === 0) return null;
+          return (
+            <section key={group.heading} aria-labelledby={`g-${group.heading}`}>
+              <div className="flex items-baseline justify-between mb-2 px-1">
+                <h2 id={`g-${group.heading}`} className="eyebrow !font-semibold">{group.heading}</h2>
+                <span className="text-xs text-subtle hidden sm:inline">{group.hint}</span>
+              </div>
+              <ul className="card divide-y divide-[var(--card-border)] overflow-hidden">
+                {users.map(user => (
+                  <li key={user.id}>
+                    <button
+                      onClick={() => handleLogin(user.id)}
+                      className="w-full flex items-center gap-3 px-4 py-3 min-h-touch text-left hover:bg-[var(--hover-bg)] transition-colors duration-150 group"
+                      id={`login-${user.id}`}
+                    >
+                      <span className="w-9 h-9 rounded-lg bg-plane text-foreground text-sm font-semibold flex items-center justify-center flex-shrink-0">
+                        {initials(user.name)}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-medium text-foreground truncate">{user.name}</span>
+                        <span className="block text-xs text-subtle truncate">{describe(user)}</span>
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-subtle group-hover:text-foreground transition-colors" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
       </div>
-
-      {/* Demo Accounts */}
-      <div className="card p-2 space-y-1">
-        {suggestedRole && (
-          <div className="px-3 py-2">
-            <p className="text-xs font-semibold text-surface-400 uppercase tracking-wider">
-              {suggestedRole === 'patient' ? 'Patient' : 'Clinician'} Accounts
-            </p>
-          </div>
-        )}
-        {filteredUsers.map(user => (
-          <button
-            key={user.id}
-            onClick={() => handleLogin(user.id)}
-            className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-[var(--hover-bg)] transition-colors text-left group"
-            id={`login-${user.id}`}
-          >
-            <div className="w-10 h-10 rounded-xl bg-surface-100 dark:bg-surface-800 flex items-center justify-center flex-shrink-0 group-hover:bg-primary-50 dark:group-hover:bg-primary-950 transition-colors">
-              {roleIcon(user.role)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-foreground truncate">{user.name}</p>
-              <p className="text-xs text-surface-400 truncate">{user.email}</p>
-            </div>
-            <span className={`text-2xs font-bold px-2 py-1 rounded-md uppercase ${roleBadgeColor(user.role)}`}>
-              {user.role}
-            </span>
-          </button>
-        ))}
-
-        {otherUsers.length > 0 && (
-          <>
-            <div className="px-3 py-2 mt-2">
-              <p className="text-xs font-semibold text-surface-400 uppercase tracking-wider">Other Accounts</p>
-            </div>
-            {otherUsers.map(user => (
-              <button
-                key={user.id}
-                onClick={() => handleLogin(user.id)}
-                className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-[var(--hover-bg)] transition-colors text-left group"
-                id={`login-${user.id}`}
-              >
-                <div className="w-10 h-10 rounded-xl bg-surface-100 dark:bg-surface-800 flex items-center justify-center flex-shrink-0">
-                  {roleIcon(user.role)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground truncate">{user.name}</p>
-                  <p className="text-xs text-surface-400 truncate">{user.email}</p>
-                </div>
-                <span className={`text-2xs font-bold px-2 py-1 rounded-md uppercase ${roleBadgeColor(user.role)}`}>
-                  {user.role}
-                </span>
-              </button>
-            ))}
-          </>
-        )}
-      </div>
-
-      <p className="text-center text-xs text-surface-400 mt-6">
-        ⚕️ This is a demo system with simulated patient data.
-      </p>
     </div>
   );
 }
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-[var(--background)] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-canvas flex justify-center px-4 py-12 sm:py-20">
       <Suspense fallback={
-        <div className="w-full max-w-md text-center">
-          <div className="w-14 h-14 rounded-2xl bg-primary-600 flex items-center justify-center mx-auto mb-4">
-            <Heart className="w-7 h-7 text-white" />
-          </div>
-          <p className="text-surface-400">Loading...</p>
+        <div className="w-full max-w-lg space-y-3" aria-label="Loading accounts">
+          <div className="skeleton h-8 w-40 mb-10" />
+          <div className="skeleton h-9 w-32" />
+          <div className="skeleton h-4 w-72 mb-8" />
+          {[0, 1, 2, 3].map(i => <div key={i} className="skeleton h-14 w-full" />)}
         </div>
       }>
         <LoginContent />

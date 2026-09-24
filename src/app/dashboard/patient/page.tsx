@@ -1,287 +1,229 @@
 'use client';
 import React from 'react';
 import Link from 'next/link';
-import {
-  Activity, FileText, Brain, Clock, Mic, Upload,
-  Calendar, Pill, AlertTriangle, ChevronRight,
-  ArrowRight, Heart
-} from 'lucide-react';
+import { Activity, Mic, Upload, ArrowRight, MessageSquareText } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
-  demoPatients, demoSymptomReports, demoDocuments,
-  demoAlerts, demoTimeline, getPatientByUserId
+  demoSymptomReports, demoDocuments, demoTimeline,
+  getPatientForUser, getNotificationsForPatient
 } from '@/data/demoData';
 import { format, differenceInDays, parseISO } from 'date-fns';
-
-function UrgencyChip({ level }: { level: string }) {
-  const classes: Record<string, string> = {
-    routine: 'chip-routine',
-    soon: 'chip-soon',
-    urgent: 'chip-urgent',
-    emergency: 'chip-emergency',
-  };
-  const labels: Record<string, string> = {
-    routine: '● Routine',
-    soon: '● Contact Soon',
-    urgent: '● Urgent Review',
-    emergency: '🚨 Emergency',
-  };
-  return <span className={classes[level] || 'chip-routine'}>{labels[level] || level}</span>;
-}
+import { RoutingChip } from '@/components/RoutingChip';
 
 export default function PatientDashboard() {
   const { user } = useAuth();
-  const patient = user ? getPatientByUserId(user.id) : demoPatients[0];
-  if (!patient) return null;
+  const patient = getPatientForUser(user);
+  if (!user || !patient) return null;
+  const isCaregiver = user.role === 'caregiver';
+  const firstName = patient.user.name.split(' ')[0];
 
   const recentReports = demoSymptomReports.filter(r => r.patientId === patient.id);
   const documents = demoDocuments.filter(d => d.patientId === patient.id);
-  const alerts = demoAlerts.filter(a => a.patientId === patient.id && !a.isRead);
-  const timeline = demoTimeline.filter(t => t.patientId === patient.id).slice(0, 5);
+  const allNotifications = getNotificationsForPatient(patient.id);
+  const unreadCount = allNotifications.filter(n => !n.isRead).length;
+  const timeline = demoTimeline
+    .filter(t => t.patientId === patient.id && !t.careTeamOnly)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 5);
 
   const nextFollowUp = patient.followUpSchedule.find(f => f.status === 'scheduled');
   const daysUntilFollowUp = nextFollowUp ? differenceInDays(parseISO(nextFollowUp.dueDate), new Date()) : null;
+  const followUpPassed = daysUntilFollowUp !== null && daysUntilFollowUp < 0;
 
   const activeMeds = patient.medications.filter(m => m.isActive);
   const lastSymptomReport = recentReports[0];
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Welcome Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">
-            Welcome back, {patient.user.name.split(' ')[0]}
-          </h1>
-          <p className="text-surface-500 dark:text-surface-400 text-sm mt-1">
-            {patient.cancerStage} {patient.receptorStatus.join('/')} • {patient.treatmentCenter}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/symptoms" className="btn-primary text-sm gap-2">
-            <Activity className="w-4 h-4" />
-            Report Symptoms
-          </Link>
-          <Link href="/assistant" className="btn-secondary text-sm gap-2">
-            <Brain className="w-4 h-4" />
-            AI Assistant
-          </Link>
-        </div>
-      </div>
+    <div className="space-y-8 animate-fade-in">
+      {/* Greeting */}
+      <header>
+        <p className="eyebrow mb-2">{format(new Date(), 'EEEE, d MMMM')}</p>
+        <h1 className="page-title">Good to see you, {user.name.split(' ')[0]}</h1>
+        <p className="text-muted mt-1">
+          {isCaregiver
+            ? `You are caring for ${patient.user.name} · ${patient.treatmentCenter}`
+            : `${patient.treatmentCenter} · Follow-up ${patient.followUpFrequency.toLowerCase()}`}
+        </p>
+      </header>
 
-      {/* Alert Banner */}
-      {alerts.length > 0 && (
-        <div className="space-y-2">
-          {alerts.slice(0, 2).map(alert => (
-            <Link
-              key={alert.id}
-              href="/alerts"
-              className={`block p-4 rounded-2xl border transition-all hover:shadow-elevated ${
-                alert.severity === 'emergency'
-                  ? 'bg-emergency-50 dark:bg-emergency-950/50 border-emergency-200 dark:border-emergency-800'
-                  : alert.severity === 'urgent'
-                  ? 'bg-urgent-50 dark:bg-urgent-950/50 border-urgent-200 dark:border-urgent-800'
-                  : 'bg-caution-50 dark:bg-caution-950/50 border-caution-200 dark:border-caution-800'
-              }`}
-            >
-              <div className="flex items-start gap-3">
-                <AlertTriangle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
-                  alert.severity === 'emergency' ? 'text-emergency-600' :
-                  alert.severity === 'urgent' ? 'text-urgent-600' : 'text-caution-600'
-                }`} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <UrgencyChip level={alert.severity} />
-                  </div>
-                  <p className="text-sm font-medium text-foreground">{alert.message}</p>
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Next step */}
+        <section className="card lg:col-span-2" aria-labelledby="next-visit">
+          <div className="p-6 sm:p-8">
+            <p className="eyebrow mb-3" id="next-visit">Next follow-up visit</p>
+            {nextFollowUp ? (
+              <>
+                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
+                  <p className="font-display text-3xl text-foreground">
+                    {format(parseISO(nextFollowUp.dueDate), 'd MMMM yyyy')}
+                  </p>
+                  {followUpPassed ? (
+                    <span className="chip-soon">Date has passed</span>
+                  ) : (
+                    <span className="chip-routine">In {daysUntilFollowUp} days</span>
+                  )}
                 </div>
-                <ChevronRight className="w-5 h-5 text-surface-400 flex-shrink-0" />
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
+                <p className="text-muted mt-2">{nextFollowUp.type} · {patient.treatmentCenter}</p>
+                <p className="text-foreground mt-4 max-w-prose">
+                  {followUpPassed
+                    ? `This visit date has passed. Please call ${patient.treatmentCenter} to choose a new date.`
+                    : 'Bring your medicine list, any new reports and your questions for the doctor.'}
+                </p>
+                <Link
+                  href="/assistant"
+                  className="inline-flex items-center gap-1.5 mt-4 text-sm font-medium text-primary-700 dark:text-primary-300 hover:underline underline-offset-4"
+                >
+                  Get ready for this visit with the care companion <ArrowRight className="w-4 h-4" />
+                </Link>
+              </>
+            ) : (
+              <p className="text-muted">No visit is scheduled yet. Your care team will add your next one.</p>
+            )}
+          </div>
 
-      {/* Quick Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Next Follow-up */}
-        <div className="card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Calendar className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-            <span className="text-xs font-medium text-surface-500 uppercase tracking-wider">Next Follow-up</span>
-          </div>
-          {nextFollowUp ? (
-            <div>
-              <p className="text-xl font-bold text-foreground">
-                {daysUntilFollowUp !== null && daysUntilFollowUp >= 0 ? `${daysUntilFollowUp} days` : 'Overdue'}
-              </p>
-              <p className="text-xs text-surface-400 mt-1">
-                {format(parseISO(nextFollowUp.dueDate), 'MMM d, yyyy')}
-              </p>
-              <p className="text-xs text-surface-500 mt-0.5">{nextFollowUp.type}</p>
-            </div>
-          ) : (
-            <p className="text-sm text-surface-400">No upcoming</p>
-          )}
-        </div>
+          <div className="divider" />
 
-        {/* Reports Uploaded */}
-        <div className="card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <FileText className="w-4 h-4 text-accent-600 dark:text-accent-400" />
-            <span className="text-xs font-medium text-surface-500 uppercase tracking-wider">Reports</span>
-          </div>
-          <p className="text-xl font-bold text-foreground">{documents.length}</p>
-          <p className="text-xs text-surface-400 mt-1">uploaded documents</p>
-          <Link href="/upload" className="text-xs text-primary-600 dark:text-primary-400 font-medium mt-2 inline-flex items-center gap-1 hover:underline">
-            Upload new <ArrowRight className="w-3 h-3" />
-          </Link>
-        </div>
-
-        {/* Active Medications */}
-        <div className="card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Pill className="w-4 h-4 text-caution-600 dark:text-caution-400" />
-            <span className="text-xs font-medium text-surface-500 uppercase tracking-wider">Medications</span>
-          </div>
-          <p className="text-xl font-bold text-foreground">{activeMeds.length}</p>
-          <div className="mt-1 space-y-0.5">
-            {activeMeds.slice(0, 2).map(med => (
-              <p key={med.id} className="text-xs text-surface-400 truncate">{med.name} {med.dosage}</p>
-            ))}
-          </div>
-        </div>
-
-        {/* Last Check-in */}
-        <div className="card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Activity className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-            <span className="text-xs font-medium text-surface-500 uppercase tracking-wider">Last Check-in</span>
-          </div>
-          {lastSymptomReport ? (
-            <div>
-              <UrgencyChip level={lastSymptomReport.triageResult?.urgencyLevel || 'routine'} />
-              <p className="text-xs text-surface-400 mt-2">
-                {format(parseISO(lastSymptomReport.createdAt), 'MMM d, yyyy')}
-              </p>
-            </div>
-          ) : (
-            <p className="text-sm text-surface-400">No check-ins yet</p>
-          )}
-        </div>
-      </div>
-
-      {/* Today's Check-in Card */}
-      <div className="card p-6">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-primary-50 dark:bg-primary-950 flex items-center justify-center flex-shrink-0">
-            <Heart className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-          </div>
-          <div className="flex-1">
-            <h2 className="text-lg font-semibold text-foreground mb-1">How are you feeling today?</h2>
-            <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
-              Regular symptom check-ins help your care team monitor your recovery. It only takes a minute.
+          <div className="p-6 sm:px-8">
+            <p className="font-medium text-foreground">
+              {isCaregiver ? `How is ${firstName} doing?` : 'How are you doing?'}
+            </p>
+            <p className="text-sm text-muted mt-0.5 mb-4">
+              {isCaregiver
+                ? `Tell ${firstName}'s care team between visits. It takes about a minute.`
+                : 'Tell your care team between visits. It takes about a minute.'}
             </p>
             <div className="flex flex-wrap gap-2">
-              <Link href="/symptoms" className="btn-primary text-sm gap-2">
-                <Activity className="w-4 h-4" />
-                Start Check-in
+              <Link href="/symptoms" className="btn-primary">
+                <Activity className="w-4 h-4" /> Start check-in
               </Link>
-              <Link href="/symptoms?voice=true" className="btn-secondary text-sm gap-2">
-                <Mic className="w-4 h-4" />
-                Voice Note
+              <Link href="/symptoms?voice=true" className="btn-secondary">
+                <Mic className="w-4 h-4" /> Record a voice note
+              </Link>
+              <Link href="/upload" className="btn-secondary">
+                <Upload className="w-4 h-4" /> Upload a report
               </Link>
             </div>
           </div>
-        </div>
-      </div>
+        </section>
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {[
-          { href: '/symptoms', icon: Activity, label: 'Report Symptoms', color: 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950' },
-          { href: '/symptoms?voice=true', icon: Mic, label: 'Voice Note', color: 'text-accent-600 dark:text-accent-400 bg-accent-50 dark:bg-accent-950' },
-          { href: '/upload', icon: Upload, label: 'Upload Report', color: 'text-caution-600 dark:text-caution-400 bg-caution-50 dark:bg-caution-950' },
-          { href: '/assistant', icon: Brain, label: 'AI Assistant', color: 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950' },
-          { href: '/timeline', icon: Clock, label: 'Care Timeline', color: 'text-surface-600 dark:text-surface-400 bg-surface-100 dark:bg-surface-800' },
-        ].map(action => (
-          <Link
-            key={action.href + action.label}
-            href={action.href}
-            className="card-hover p-4 flex flex-col items-center gap-2 text-center"
-          >
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${action.color}`}>
-              <action.icon className="w-5 h-5" />
-            </div>
-            <span className="text-xs font-medium text-foreground">{action.label}</span>
-          </Link>
-        ))}
-      </div>
-
-      {/* Recent Timeline */}
-      <div className="card p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="section-title">Recent Activity</h2>
-          <Link href="/timeline" className="text-sm text-primary-600 dark:text-primary-400 font-medium hover:underline flex items-center gap-1">
-            View all <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-        <div className="space-y-3">
-          {timeline.map((event, i) => (
-            <div key={event.id} className="flex gap-3 animate-fade-in" style={{ animationDelay: `${i * 50}ms` }}>
-              <div className="flex flex-col items-center">
-                <div className={`w-3 h-3 rounded-full flex-shrink-0 mt-1.5 ${
-                  event.urgencyLevel === 'emergency' ? 'bg-emergency-500' :
-                  event.urgencyLevel === 'urgent' ? 'bg-urgent-500' :
-                  event.type === 'treatment' ? 'bg-primary-500' :
-                  event.type === 'upload' ? 'bg-accent-500' :
-                  'bg-surface-300 dark:bg-surface-600'
-                }`} />
-                {i < timeline.length - 1 && (
-                  <div className="w-px flex-1 bg-surface-200 dark:bg-surface-700 my-1" />
-                )}
-              </div>
-              <div className="flex-1 pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-medium text-foreground">{event.title}</p>
-                  {event.urgencyLevel && <UrgencyChip level={event.urgencyLevel} />}
-                </div>
-                <p className="text-xs text-surface-400 mt-0.5">{event.description}</p>
-                <p className="text-2xs text-surface-300 dark:text-surface-600 mt-1">
-                  {format(parseISO(event.date), 'MMM d, yyyy')}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Medication Reminders */}
-      {activeMeds.length > 0 && (
-        <div className="card p-6">
-          <h2 className="section-title mb-4">Current Medications</h2>
-          <div className="space-y-3">
-            {activeMeds.map(med => (
-              <div key={med.id} className="flex items-center gap-3 p-3 rounded-xl bg-surface-50 dark:bg-surface-800">
-                <div className="w-10 h-10 rounded-xl bg-caution-50 dark:bg-caution-950 flex items-center justify-center flex-shrink-0">
-                  <Pill className="w-5 h-5 text-caution-600 dark:text-caution-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">{med.name}</p>
-                  <p className="text-xs text-surface-400">{med.dosage} • {med.frequency}</p>
-                </div>
-              </div>
-            ))}
+        {/* From the care team */}
+        <section className="panel p-6 flex flex-col" aria-labelledby="from-team">
+          <div className="flex items-baseline justify-between mb-4">
+            <h2 id="from-team" className="section-title !font-sans">From your care team</h2>
+            {unreadCount > 0 && <span className="text-xs text-subtle">{unreadCount} new</span>}
           </div>
-        </div>
-      )}
-
-      {/* Safety footer */}
-      <div className="text-center py-4">
-        <p className="text-xs text-surface-400">
-          ⚕️ This tool is for follow-up support and does not replace a doctor&apos;s diagnosis.
-        </p>
+          {allNotifications.length === 0 ? (
+            <p className="text-sm text-muted">Nothing new from your care team.</p>
+          ) : (
+            <ul className="space-y-4 flex-1">
+              {allNotifications.slice(0, 3).map(n => (
+                <li key={n.id}>
+                  <Link href="/notifications" className="group block">
+                    <div className="flex items-start gap-2.5">
+                      <span
+                        className={`mt-2 w-1.5 h-1.5 rounded-full flex-shrink-0 ${n.isRead ? 'bg-transparent' : 'bg-primary-600 dark:bg-primary-300'}`}
+                        aria-label={n.isRead ? undefined : 'Unread'}
+                      />
+                      <div className="min-w-0">
+                        <p className={`text-sm group-hover:underline underline-offset-4 ${n.isRead ? 'text-muted' : 'text-foreground font-medium'}`}>
+                          {n.title}
+                        </p>
+                        <p className="text-xs text-subtle mt-0.5">{format(parseISO(n.createdAt), 'd MMM')}</p>
+                      </div>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Link href="/notifications" className="mt-6 text-sm font-medium text-primary-700 dark:text-primary-300 hover:underline underline-offset-4">
+            All notifications
+          </Link>
+        </section>
       </div>
+
+      {/* At a glance */}
+      <section className="card grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[var(--card-border)]" aria-label="At a glance">
+        <div className="p-5">
+          <p className="eyebrow mb-2">Last check-in</p>
+          {lastSymptomReport ? (
+            <>
+              <RoutingChip audience="patient" priority={lastSymptomReport.triageResult?.routingPriority || 'routine'} />
+              <p className="text-xs text-subtle mt-2">{format(parseISO(lastSymptomReport.createdAt), 'd MMM yyyy')}</p>
+            </>
+          ) : (
+            <Link href="/symptoms" className="text-sm text-primary-700 dark:text-primary-300 hover:underline underline-offset-4">
+              No check-ins yet — start one
+            </Link>
+          )}
+        </div>
+        <div className="p-5">
+          <p className="eyebrow mb-2">Reports on file</p>
+          <p className="text-2xl font-semibold text-foreground tabular-nums">{documents.length}</p>
+          <Link href="/upload" className="text-xs text-primary-700 dark:text-primary-300 hover:underline underline-offset-4">Upload another</Link>
+        </div>
+        <div className="p-5">
+          <p className="eyebrow mb-2">Current medicines</p>
+          <p className="text-2xl font-semibold text-foreground tabular-nums">{activeMeds.length}</p>
+          <p className="text-xs text-subtle">As prescribed by your doctor</p>
+        </div>
+      </section>
+
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Recent activity */}
+        <section className="card lg:col-span-2 p-6" aria-labelledby="recent">
+          <div className="flex items-baseline justify-between mb-4">
+            <h2 id="recent" className="section-title !font-sans">Recent activity</h2>
+            <Link href="/timeline" className="text-sm font-medium text-primary-700 dark:text-primary-300 hover:underline underline-offset-4">
+              Full timeline
+            </Link>
+          </div>
+          {timeline.length === 0 ? (
+            <p className="text-sm text-muted">Your check-ins, reports and visits will appear here.</p>
+          ) : (
+            <ol className="divide-y divide-[var(--card-border)]">
+              {timeline.map(event => (
+                <li key={event.id} className="py-3 first:pt-0 last:pb-0 grid grid-cols-[5.5rem_1fr] gap-4">
+                  <time className="text-xs text-subtle pt-0.5 tabular-nums" dateTime={event.date}>
+                    {format(parseISO(event.date), 'd MMM yyyy')}
+                  </time>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium text-foreground">{event.title}</p>
+                      {event.urgencyLevel && <RoutingChip audience="patient" priority={event.urgencyLevel} />}
+                    </div>
+                    <p className="text-sm text-muted mt-0.5">{event.description}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+
+        {/* Medicines */}
+        <section className="card p-6" aria-labelledby="meds">
+          <h2 id="meds" className="section-title !font-sans mb-4">Medicines</h2>
+          {activeMeds.length === 0 ? (
+            <p className="text-sm text-muted">No current medicines recorded.</p>
+          ) : (
+            <ul className="divide-y divide-[var(--card-border)]">
+              {activeMeds.map(med => (
+                <li key={med.id} className="py-3 first:pt-0 last:pb-0">
+                  <p className="text-sm font-medium text-foreground">{med.name} <span className="text-muted font-normal">{med.dosage}</span></p>
+                  <p className="text-xs text-subtle mt-0.5">{med.frequency}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Link href="/assistant" className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-primary-700 dark:text-primary-300 hover:underline underline-offset-4">
+            <MessageSquareText className="w-4 h-4" /> Questions about your routine?
+          </Link>
+        </section>
+      </div>
+
+      <p className="text-xs text-subtle">
+        OncoFollow supports your follow-up care and does not replace your doctor. For an emergency, call your local emergency number.
+      </p>
     </div>
   );
 }

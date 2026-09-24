@@ -9,6 +9,7 @@ interface AuthContextType {
   logout: () => void;
   isAuthenticated: boolean;
   role: UserRole | null;
+  ready: boolean; // true once the saved session has been read
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -17,10 +18,12 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => {},
   isAuthenticated: false,
   role: null,
+  ready: false,
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const stored = typeof window !== 'undefined' ? localStorage.getItem('oncofollow_user') : null;
@@ -31,6 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('oncofollow_user');
       }
     }
+    setReady(true);
   }, []);
 
   const login = (userId: string) => {
@@ -53,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       isAuthenticated: !!user,
       role: user?.role || null,
+      ready,
     }}>
       {children}
     </AuthContext.Provider>
