@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { Analytics } from '@vercel/analytics/next';
 
 // UI text: Inter. Page and section headings: Source Serif 4.
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
@@ -29,6 +30,7 @@ export default function RootLayout({
         <Providers>
           {children}
         </Providers>
+        <Analytics />
       </body>
     </html>
   );
