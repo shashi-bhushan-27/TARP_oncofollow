@@ -31,6 +31,7 @@ export function useTapAsha(userId: string | undefined, speakReplies: boolean, ca
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const busyRef = useRef(false);
+  const cancelledRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
@@ -111,16 +112,17 @@ export function useTapAsha(userId: string | undefined, speakReplies: boolean, ca
         body: JSON.stringify({ userId, messages: messagesRef.current, state: stateRef.current, flow: flowRef.current }),
       });
       const data = await res.json();
+      if (cancelledRef.current) return true; // switched away while Asha was replying
       if (!data.success) throw new Error(data.error || 'Asha could not reply');
       if (data.emergency) {
         setStatus('ended');
-        callbacksRef.current.onEmergency(data.trigger, stateRef.current, linesRef.current);
+        callbacksRef.current.onEmergency(data.trigger, stateRef.current, linesRef.current, flagsRef.current);
         return true;
       }
       stateRef.current = data.state;
       setState(data.state);
       flowRef.current = data.flow;
-      if (data.toneFlag) flagsRef.current.push(`Tone to review: "${data.toneFlag}"`);
+      if (data.reviewFlag) flagsRef.current.push(data.reviewFlag);
       messagesRef.current = [...messagesRef.current, { role: 'assistant', content: data.reply }];
       pushLine('asha', data.reply);
       setStatus('listening');
@@ -141,6 +143,7 @@ export function useTapAsha(userId: string | undefined, speakReplies: boolean, ca
   }, [userId, speak, complete]);
 
   const start = useCallback(async () => {
+    cancelledRef.current = false;
     messagesRef.current = [];
     stateRef.current = emptyAshaState();
     flowRef.current = emptyFlow();
@@ -169,6 +172,7 @@ export function useTapAsha(userId: string | undefined, speakReplies: boolean, ca
       recorder.onstop = async () => {
         stream.getTracks().forEach(t => t.stop());
         setRecording(false);
+        if (cancelledRef.current) return; // switched modes mid-recording: discard
         const type = recorder.mimeType.split(';')[0] || 'audio/webm';
         const blob = new Blob(chunks, { type });
         if (!blob.size) return;
@@ -197,11 +201,30 @@ export function useTapAsha(userId: string | undefined, speakReplies: boolean, ca
     }
   }, [recording, send]);
 
+  /** Stop without submitting — used when switching modes */
+  const cancel = useCallback(() => {
+    cancelledRef.current = true;
+    busyRef.current = false;
+    stopSpeaking();
+    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    messagesRef.current = [];
+    stateRef.current = emptyAshaState();
+    flowRef.current = emptyFlow();
+    linesRef.current = [];
+    flagsRef.current = [];
+    setLines([]);
+    setState(emptyAshaState());
+    setRecording(false);
+    setError(null);
+    setStatus('idle');
+  }, []);
+
   useEffect(() => () => {
     stopSpeaking();
     if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
     streamRef.current?.getTracks().forEach(t => t.stop());
   }, []);
 
-  return { status, lines, state, recording, error, start, send, toggleRecording, finish: complete };
+  return { status, lines, state, recording, error, start, send, toggleRecording, finish: complete, cancel };
 }

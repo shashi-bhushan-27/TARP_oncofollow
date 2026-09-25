@@ -6,6 +6,7 @@
 
 import { FunctionDeclaration, Type } from '@google/genai';
 import { DURATIONS, FREQUENCIES, SEVERITIES, SYMPTOM_NAMES, TRENDS } from './normalize';
+import { EMERGENCY_SIGNS } from '@/lib/safety';
 
 export const ASHA_TOOLS: FunctionDeclaration[] = [
   {
@@ -43,7 +44,7 @@ export const ASHA_TOOLS: FunctionDeclaration[] = [
   },
   {
     name: 'flag_emergency',
-    description: 'Call immediately if they mention an emergency sign (trouble breathing, chest pain, heavy bleeding, coughing blood, fainting, confusion, seizure, very high fever).',
+    description: `Call immediately if they mention an emergency sign: ${EMERGENCY_SIGNS.join(', ')}.`,
     parameters: {
       type: Type.OBJECT,
       properties: { what_they_said: { type: Type.STRING } },

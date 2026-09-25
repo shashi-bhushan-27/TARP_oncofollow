@@ -11,7 +11,7 @@ export interface AshaLine {
 
 export interface AshaCallbacks {
   /** Emergency words heard — stop and show the emergency screen */
-  onEmergency: (whatWasSaid: string, state: AshaState, lines: AshaLine[]) => void;
+  onEmergency: (whatWasSaid: string, state: AshaState, lines: AshaLine[], reviewFlags: string[]) => void;
   /** Conversation finished normally — show the summary */
   onFinished: (state: AshaState, lines: AshaLine[], reviewFlags: string[]) => void;
 }
@@ -25,5 +25,6 @@ export interface AshaSession {
   error: string | null;
   start: () => Promise<void>;
   finish: () => void;     // "That's enough for now"
+  cancel: () => void;     // stop without submitting (switching modes)
   toggleMute: () => void;
 }

@@ -149,8 +149,11 @@ export function AshaCheckIn({
   const started = status !== 'idle' && status !== 'error';
   const inConversation = started && status !== 'ended';
 
+  // Stop whichever mode is active (its audio, mic, recording and pending reply) before switching
   const switchMode = (next: 'live' | 'tap') => {
-    if (mode === 'live' && inConversation) live.finish();
+    if (inConversation && !window.confirm('Switching starts a new conversation with Asha. Continue?')) return;
+    (mode === 'live' ? live : tap).cancel();
+    setDraft('');
     setMode(next);
   };
 

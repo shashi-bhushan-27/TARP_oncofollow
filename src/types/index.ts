@@ -191,6 +191,7 @@ export interface TriageResult {
   confidenceBand: 'low' | 'moderate' | 'high';
   citations: Citation[];
   disclaimer: string;
+  reviewFlags?: string[]; // care-team only: Asha replies flagged for review
 }
 
 export interface Citation {
